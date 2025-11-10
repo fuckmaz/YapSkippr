@@ -1,0 +1,14 @@
+{
+  "name": "YapSkippr",
+  "description": "In-Video Sponsorship- and Ad-Skipper",
+  "version": "1.0",
+  "manifest_version": 3,
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icons/arrow_512.png"
+  },
+  "icons": {
+    "48": "icons/arrow_64.png",
+    "128": "icons/arrow_512.png"
+  }
+}
