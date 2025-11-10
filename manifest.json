@@ -4,9 +4,10 @@
   "version": "1.0",
   "manifest_version": 3,
   "icons": {
+    "16": "icons/arrow_16.png",
     "32": "icons/arrow_32.png",
     "48": "icons/arrow_64.png",
-    "128": "icons/arrow_512.png"
+    "128": "icons/arrow_128.png"
   },
   "background": {
     "service_worker": "service-worker.js"
@@ -14,9 +15,10 @@
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
+      "16": "icons/arrow_16.png",
       "32": "icons/arrow_32.png",
       "48": "icons/arrow_64.png",
-      "128": "icons/arrow_512.png"
+      "128": "icons/arrow_128.png"
     }
   },
   "permissions": ["scripting", "activeTab"]
