@@ -23,6 +23,31 @@ Build Firefox:
 npm run build:firefox
 ```
 
+Build local install artifacts for Chrome/Chromium and Firefox:
+
+```bash
+npm run build:installable
+```
+
+This creates:
+
+- Chrome/Chromium unpacked extension: `.output/chrome-mv3`
+- Chrome/Chromium upload ZIP: `.output/installable/yapskippr-chrome.zip`
+- Firefox temporary add-on folder: `.output/firefox-mv2`
+- Firefox ZIP and XPI-style archive: `.output/installable/yapskippr-firefox.zip` and `.output/installable/yapskippr-firefox.xpi`
+
+Chrome/Chromium local install:
+
+1. Open `chrome://extensions`.
+2. Enable Developer mode.
+3. Click "Load unpacked" and select `.output/chrome-mv3`.
+
+Firefox local install:
+
+1. Open `about:debugging#/runtime/this-firefox`.
+2. Click "Load Temporary Add-on...".
+3. Select `.output/firefox-mv2/manifest.json`.
+
 Run unit tests:
 
 ```bash

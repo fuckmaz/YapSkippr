@@ -8,6 +8,7 @@
     "dev:firefox": "wxt -b firefox",
     "build": "wxt build",
     "build:firefox": "wxt build -b firefox",
+    "build:installable": "node scripts/build-installable.mjs",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "test": "vitest run",
