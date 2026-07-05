@@ -56,7 +56,11 @@ export function startScreenshotFrameSampler(video: HTMLVideoElement, options: Fr
       const frame = await sampleFrameFromScreenshot(video, dataUrl, options.width);
       await options.onFrame(frame);
     } catch (error) {
-      options.onError?.(error instanceof Error ? error : new Error(String(error)));
+      const frameError = error instanceof Error ? error : new Error(String(error));
+      if (isExtensionContextInvalidatedError(frameError)) {
+        stopped = true;
+      }
+      options.onError?.(frameError);
     } finally {
       if (!stopped) {
         timeout = window.setTimeout(() => void tick(), options.sampleIntervalMs);
@@ -70,6 +74,10 @@ export function startScreenshotFrameSampler(video: HTMLVideoElement, options: Fr
     stopped = true;
     if (timeout !== undefined) window.clearTimeout(timeout);
   };
+}
+
+export function isExtensionContextInvalidatedError(error: Error): boolean {
+  return error.message.toLowerCase().includes('extension context invalidated');
 }
 
 export function calculateScreenshotCrop(

@@ -2,7 +2,7 @@ import './style.css';
 import { buildSegmentCandidates } from '../../core/analysis/evidence-fusion';
 import { detectProgressBarCue } from '../../core/analysis/progress-bar-detector';
 import { detectQrCue } from '../../core/analysis/qr-detector';
-import { startScreenshotFrameSampler } from '../../core/analysis/frame-sampler';
+import { isExtensionContextInvalidatedError, startScreenshotFrameSampler } from '../../core/analysis/frame-sampler';
 import { analyzeTranscriptCues } from '../../core/analysis/transcript-analyzer';
 import type { TimedEvidence } from '../../core/types';
 import { createYouTubeAdapter } from '../../platform/youtube/youtube-adapter';
@@ -104,6 +104,12 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
       statusUi.setStatus(`Analyzing frames... ${sampleCount} sampled`);
     },
     onError(error) {
+      if (isExtensionContextInvalidatedError(error)) {
+        logger.warn('frame sampling stopped because extension context was invalidated', error.message);
+        statusUi.setStatus('Extension reloaded. Reload this YouTube tab to resume frame analysis.');
+        stopFrames?.();
+        return;
+      }
       logger.warn('frame sampling failed', error.message);
       statusUi.setStatus('Frame capture unavailable; transcript scan continues.');
     }

@@ -1,4 +1,4 @@
-import { calculateScreenshotCrop } from '../../src/core/analysis/frame-sampler';
+import { startScreenshotFrameSampler, calculateScreenshotCrop } from '../../src/core/analysis/frame-sampler';
 
 test('calculates screenshot crop from video rect and screenshot dimensions', () => {
   const crop = calculateScreenshotCrop(
@@ -28,4 +28,40 @@ test('clamps screenshot crop to viewport bounds', () => {
     sourceWidth: 1280,
     sourceHeight: 720
   });
+});
+
+test('stops retrying when extension context is invalidated', async () => {
+  vi.useFakeTimers();
+  const setTimeoutSpy = vi.fn(() => 123);
+  vi.stubGlobal('document', { visibilityState: 'visible' });
+  vi.stubGlobal('window', {
+    setTimeout: setTimeoutSpy,
+    clearTimeout: vi.fn()
+  });
+  vi.stubGlobal('chrome', {
+    runtime: {
+      sendMessage: vi.fn(async () => {
+        throw new Error('Extension context invalidated.');
+      })
+    }
+  });
+
+  const onError = vi.fn();
+  const video = { isConnected: true } as HTMLVideoElement;
+
+  startScreenshotFrameSampler(video, {
+    width: 320,
+    sampleIntervalMs: 1000,
+    onFrame: vi.fn(),
+    onError
+  });
+
+  await vi.runAllTicks();
+  await Promise.resolve();
+
+  expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'Extension context invalidated.' }));
+  expect(setTimeoutSpy).not.toHaveBeenCalled();
+
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
