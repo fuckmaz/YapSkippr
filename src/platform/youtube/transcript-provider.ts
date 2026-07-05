@@ -20,7 +20,7 @@ export async function loadYouTubeTranscript(
     throw new Error(`Caption request failed with HTTP ${response.status}.`);
   }
 
-  const payload = await response.json();
+  const payload = await readCaptionPayload(response);
   return {
     cues: parseJson3CaptionTrack(payload),
     track
@@ -62,6 +62,17 @@ async function fetchPageHtml(pageUrl: URL, fetcher: typeof fetch): Promise<strin
     const response = await fetcher(pageUrl.toString(), { credentials: 'include' });
     if (!response.ok) return null;
     return response.text();
+  } catch {
+    return null;
+  }
+}
+
+async function readCaptionPayload(response: Response): Promise<unknown> {
+  const body = await response.text();
+  if (!body.trim()) return null;
+
+  try {
+    return JSON.parse(body);
   } catch {
     return null;
   }
