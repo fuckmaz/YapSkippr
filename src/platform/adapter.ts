@@ -1,4 +1,4 @@
-import type { TranscriptCue } from '../core/types';
+import type { SegmentCandidate, TranscriptCue } from '../core/types';
 
 export interface VideoPlatformAdapter {
   id: string;
@@ -14,6 +14,6 @@ export interface VideoPlatformAdapter {
 export interface StatusUiHandle {
   setStatus(message: string): void;
   setProgress(value: number): void;
-  setCandidates(count: number): void;
+  setCandidates(candidates: SegmentCandidate[]): void;
   destroy(): void;
 }

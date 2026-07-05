@@ -12,7 +12,7 @@ import { createLogger } from '../../ui/logger';
 const logger = createLogger('youtube-content');
 
 export default defineContentScript({
-  matches: ['https://*.youtube.com/*', 'https://youtu.be/*'],
+  matches: ['https://youtube.com/*', 'https://www.youtube.com/*', 'https://*.youtube.com/*', 'https://youtu.be/*'],
   cssInjectionMode: 'ui',
   async main(ctx) {
     logger.info('content script loaded');
@@ -126,8 +126,8 @@ async function waitForVideo(adapter: ReturnType<typeof createYouTubeAdapter>, ti
   return adapter.getVideoElement();
 }
 
-function updateCandidates(evidence: TimedEvidence[], statusUi: { setCandidates(count: number): void }): void {
+function updateCandidates(evidence: TimedEvidence[], statusUi: { setCandidates(candidates: ReturnType<typeof buildSegmentCandidates>): void }): void {
   const candidates = buildSegmentCandidates(evidence);
-  statusUi.setCandidates(candidates.length);
+  statusUi.setCandidates(candidates);
   logger.info('segment candidates updated', candidates);
 }

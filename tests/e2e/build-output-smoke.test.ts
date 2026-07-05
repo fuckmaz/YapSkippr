@@ -12,7 +12,9 @@ test('Chrome build output contains the YouTube content script and preserved meta
 
   expect(manifest.name).toBe('YapSkippr');
   expect(manifest.description).toBe('In-Video Sponsorship- and Ad-Skipper');
+  expect(manifest.content_scripts?.[0]?.matches).toContain('https://youtube.com/*');
   expect(manifest.content_scripts?.[0]?.matches).toContain('https://*.youtube.com/*');
+  expect(manifest.content_scripts?.[0]?.matches).toContain('https://www.youtube.com/*');
   expect(manifest.content_scripts?.[0]?.js?.[0]).toBe('content-scripts/youtube.js');
 
   const contentScript = await readFile(join(process.cwd(), '.output/chrome-mv3/content-scripts/youtube.js'), 'utf8');

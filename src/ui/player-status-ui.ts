@@ -1,4 +1,6 @@
 import type { StatusUiHandle } from '../platform/adapter';
+import type { SegmentCandidate } from '../core/types';
+import { formatCandidateSummary } from './candidate-summary';
 
 export function mountPlayerStatusUi(doc: Document = document): StatusUiHandle {
   doc.querySelector('#yapskippr-status-host')?.remove();
@@ -46,6 +48,21 @@ export function mountPlayerStatusUi(doc: Document = document): StatusUiHandle {
         width: var(--yapskippr-progress, 0%);
         background: #33c481;
       }
+
+      .yapskippr-candidate-list {
+        margin: 8px 0 0;
+        padding-left: 18px;
+      }
+
+      .yapskippr-candidate-list:empty {
+        display: none;
+      }
+
+      .yapskippr-candidate-list li {
+        margin-top: 4px;
+        color: rgba(245, 245, 245, 0.86);
+        line-height: 1.35;
+      }
     </style>
     <section class="yapskippr-status" aria-live="polite">
       <div class="yapskippr-row">
@@ -53,6 +70,7 @@ export function mountPlayerStatusUi(doc: Document = document): StatusUiHandle {
         <span data-role="candidates">0 candidates</span>
       </div>
       <div class="yapskippr-meter"><span></span></div>
+      <ol class="yapskippr-candidate-list" data-role="candidate-list"></ol>
     </section>
   `;
 
@@ -65,6 +83,7 @@ export function mountPlayerStatusUi(doc: Document = document): StatusUiHandle {
 
   const status = shadow.querySelector<HTMLElement>('[data-role="status"]');
   const candidates = shadow.querySelector<HTMLElement>('[data-role="candidates"]');
+  const candidateList = shadow.querySelector<HTMLOListElement>('[data-role="candidate-list"]');
   const shell = shadow.querySelector<HTMLElement>('.yapskippr-status');
 
   return {
@@ -74,8 +93,18 @@ export function mountPlayerStatusUi(doc: Document = document): StatusUiHandle {
     setProgress(value: number): void {
       shell?.style.setProperty('--yapskippr-progress', `${Math.round(clamp(value, 0, 1) * 100)}%`);
     },
-    setCandidates(count: number): void {
+    setCandidates(candidateSegments: SegmentCandidate[]): void {
+      const count = candidateSegments.length;
       if (candidates) candidates.textContent = `${count} ${count === 1 ? 'candidate' : 'candidates'}`;
+      if (!candidateList) return;
+
+      candidateList.replaceChildren(
+        ...candidateSegments.slice(0, 5).map((candidate) => {
+          const item = doc.createElement('li');
+          item.textContent = formatCandidateSummary(candidate);
+          return item;
+        })
+      );
     },
     destroy(): void {
       host.remove();
