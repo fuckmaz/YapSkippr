@@ -41,6 +41,7 @@ Chrome/Chromium local install:
 1. Open `chrome://extensions`.
 2. Enable Developer mode.
 3. Click "Load unpacked" and select `.output/chrome-mv3`.
+4. Open the YapSkippr extension popup, click "Grant frame capture access" if shown, then reload the YouTube video tab.
 
 Firefox local install:
 
@@ -59,3 +60,5 @@ npm test
 Frame samples, transcript cues, and detection results stay inside the browser. The extension has no backend and does not upload video data.
 
 YapSkippr declares the broad `<all_urls>` host permission because browser APIs require it for automatic `tabs.captureVisibleTab()` frame sampling. The content script is still scoped to YouTube URLs, and captured frames are processed locally.
+
+If Chrome reports `Either the '<all_urls>' or 'activeTab' permission is required`, the extension has not been granted runtime host access yet. Open the YapSkippr popup, grant frame capture access, and reload the YouTube tab.

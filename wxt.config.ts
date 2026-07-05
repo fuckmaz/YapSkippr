@@ -5,7 +5,7 @@ export default defineConfig({
   manifest: {
     name: 'YapSkippr',
     description: 'In-Video Sponsorship- and Ad-Skipper',
-    permissions: ['storage'],
+    permissions: ['storage', 'activeTab'],
     host_permissions: [
       '<all_urls>',
       'https://youtube.com/*',

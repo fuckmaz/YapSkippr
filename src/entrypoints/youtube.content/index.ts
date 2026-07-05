@@ -2,7 +2,11 @@ import './style.css';
 import { buildSegmentCandidates } from '../../core/analysis/evidence-fusion';
 import { detectProgressBarCue } from '../../core/analysis/progress-bar-detector';
 import { detectQrCue } from '../../core/analysis/qr-detector';
-import { isExtensionContextInvalidatedError, startScreenshotFrameSampler } from '../../core/analysis/frame-sampler';
+import {
+  isCapturePermissionMissingError,
+  isExtensionContextInvalidatedError,
+  startScreenshotFrameSampler
+} from '../../core/analysis/frame-sampler';
 import { analyzeTranscriptCues } from '../../core/analysis/transcript-analyzer';
 import type { TimedEvidence } from '../../core/types';
 import { createYouTubeAdapter } from '../../platform/youtube/youtube-adapter';
@@ -107,6 +111,12 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
       if (isExtensionContextInvalidatedError(error)) {
         logger.warn('frame sampling stopped because extension context was invalidated', error.message);
         statusUi.setStatus('Extension reloaded. Reload this YouTube tab to resume frame analysis.');
+        stopFrames?.();
+        return;
+      }
+      if (isCapturePermissionMissingError(error)) {
+        logger.warn('frame sampling stopped because capture permission is missing', error.message);
+        statusUi.setStatus('Frame capture permission missing. Click the YapSkippr extension icon, grant access, then reload this tab.');
         stopFrames?.();
         return;
       }

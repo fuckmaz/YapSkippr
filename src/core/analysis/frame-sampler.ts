@@ -57,7 +57,7 @@ export function startScreenshotFrameSampler(video: HTMLVideoElement, options: Fr
       await options.onFrame(frame);
     } catch (error) {
       const frameError = error instanceof Error ? error : new Error(String(error));
-      if (isExtensionContextInvalidatedError(frameError)) {
+      if (isExtensionContextInvalidatedError(frameError) || isCapturePermissionMissingError(frameError)) {
         stopped = true;
       }
       options.onError?.(frameError);
@@ -78,6 +78,11 @@ export function startScreenshotFrameSampler(video: HTMLVideoElement, options: Fr
 
 export function isExtensionContextInvalidatedError(error: Error): boolean {
   return error.message.toLowerCase().includes('extension context invalidated');
+}
+
+export function isCapturePermissionMissingError(error: Error): boolean {
+  const message = error.message.toLowerCase();
+  return message.includes('<all_urls>') && message.includes('activetab') && message.includes('permission');
 }
 
 export function calculateScreenshotCrop(
