@@ -1,0 +1,33 @@
+{
+  "name": "yapskippr",
+  "version": "0.1.0",
+  "description": "In-Video Sponsorship- and Ad-Skipper",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "jsqr": "latest"
+  },
+  "devDependencies": {
+    "@playwright/test": "latest",
+    "@types/chrome": "latest",
+    "@vitest/coverage-v8": "latest",
+    "playwright": "latest",
+    "typescript": "latest",
+    "vite": "latest",
+    "vitest": "latest",
+    "wxt": "latest"
+  }
+}
