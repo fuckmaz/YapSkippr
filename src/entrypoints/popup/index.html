@@ -11,17 +11,22 @@
       <h1>YapSkippr</h1>
       <p id="status">Open a YouTube video to scan for ad-read cues.</p>
       <section class="scan-panel" aria-label="Current scan">
-        <h2>Current scan</h2>
-        <div class="scan-row">
-          <span id="scan-title">No active scan</span>
-          <span id="scan-progress-text">0%</span>
+        <div class="scan-panel-head">
+          <div>
+            <h2>Current scan</h2>
+            <span id="scan-title">No active scan</span>
+          </div>
+          <span id="scan-phase" class="scan-pill">Idle</span>
         </div>
         <p id="scan-message">No active scan.</p>
-        <div class="scan-meter" aria-hidden="true"><span id="scan-progress-bar"></span></div>
+        <div class="scan-progress-row">
+          <div class="scan-meter" aria-hidden="true"><span id="scan-progress-bar"></span></div>
+          <span id="scan-progress-text">0%</span>
+        </div>
         <dl class="scan-metrics">
           <div>
-            <dt>Phase</dt>
-            <dd id="scan-phase">Idle</dd>
+            <dt>Video</dt>
+            <dd id="scan-time">No timing</dd>
           </div>
           <div>
             <dt>Frames</dt>
@@ -32,7 +37,26 @@
             <dd id="scan-candidate-count">0 candidates</dd>
           </div>
         </dl>
+        <div class="section-label">Evidence</div>
+        <dl id="scan-evidence" class="evidence-grid">
+          <div>
+            <dt>Transcript</dt>
+            <dd id="evidence-transcript">0</dd>
+          </div>
+          <div>
+            <dt>Progress</dt>
+            <dd id="evidence-progress">0</dd>
+          </div>
+          <div>
+            <dt>QR</dt>
+            <dd id="evidence-qr">0</dd>
+          </div>
+        </dl>
+        <div class="section-label">Candidates</div>
         <ol id="scan-candidates" class="scan-candidates"></ol>
+        <p id="candidate-action-status" class="action-status" aria-live="polite"></p>
+        <div class="section-label">Recent activity</div>
+        <ol id="scan-events" class="scan-events"></ol>
         <p id="scan-updated" class="scan-updated">Not updated yet.</p>
       </section>
       <section aria-label="Frame capture access">

@@ -23,12 +23,15 @@ test('Chrome build output contains the YouTube content script and preserved meta
 
   const contentScript = await readFile(join(process.cwd(), '.output/chrome-mv3/content-scripts/youtube.js'), 'utf8');
   expect(contentScript).toContain('YAPSKIPPR_CAPTURE_VISIBLE_TAB');
+  expect(contentScript).toContain('YAPSKIPPR_SEEK_TO');
   expect(contentScript).toContain('frame-progress-bar');
   expect(contentScript).toContain('frame-qr-code');
 
   const popupHtml = await readFile(join(process.cwd(), '.output/chrome-mv3/popup.html'), 'utf8');
   expect(popupHtml).toContain('Grant frame capture access');
   expect(popupHtml).toContain('Current scan');
+  expect(popupHtml).toContain('Evidence');
+  expect(popupHtml).toContain('Recent activity');
 
   const chunkFiles = await readdir(join(process.cwd(), '.output/chrome-mv3/chunks'));
   const popupChunk = chunkFiles.find((file) => file.startsWith('popup-') && file.endsWith('.js'));
@@ -39,4 +42,6 @@ test('Chrome build output contains the YouTube content script and preserved meta
   expect(popupScript).toContain('<all_urls>');
   expect(popupScript).toContain('yapskippr.scanStatus');
   expect(popupScript).toContain('storage.onChanged');
+  expect(popupScript).toContain('tabs.sendMessage');
+  expect(popupScript).toContain('YAPSKIPPR_SEEK_TO');
 });

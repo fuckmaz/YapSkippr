@@ -4,6 +4,7 @@ import { readStoredScanStatus, subscribeToStoredScanStatus } from '../../core/sc
 import { createPopupScanStatusView } from '../../ui/popup-scan-status-view';
 
 const frameCaptureOrigins = ['<all_urls>'];
+const seekToMessageType = 'YAPSKIPPR_SEEK_TO';
 const status = document.querySelector('#status');
 const permissionStatus = document.querySelector('#permission-status');
 const grantAccessButton = document.querySelector<HTMLButtonElement>('#grant-access');
@@ -12,15 +13,29 @@ const scanPhase = document.querySelector('#scan-phase');
 const scanMessage = document.querySelector('#scan-message');
 const scanProgressText = document.querySelector('#scan-progress-text');
 const scanProgressBar = document.querySelector<HTMLElement>('#scan-progress-bar');
+const scanTime = document.querySelector('#scan-time');
 const scanSamples = document.querySelector('#scan-samples');
 const scanCandidateCount = document.querySelector('#scan-candidate-count');
+const evidenceTranscript = document.querySelector('#evidence-transcript');
+const evidenceProgress = document.querySelector('#evidence-progress');
+const evidenceQr = document.querySelector('#evidence-qr');
 const scanCandidates = document.querySelector<HTMLOListElement>('#scan-candidates');
+const candidateActionStatus = document.querySelector('#candidate-action-status');
+const scanEvents = document.querySelector<HTMLOListElement>('#scan-events');
 const scanUpdated = document.querySelector('#scan-updated');
 
 status?.replaceChildren(document.createTextNode('Detection status is mirrored here while a YouTube tab is scanning.'));
 
 grantAccessButton?.addEventListener('click', () => {
   void requestFrameCaptureAccess();
+});
+
+scanCandidates?.addEventListener('click', (event) => {
+  const button = event.target instanceof HTMLElement ? event.target.closest<HTMLButtonElement>('button[data-seek-seconds]') : null;
+  const seekSeconds = Number(button?.dataset.seekSeconds);
+  if (!button || !Number.isFinite(seekSeconds)) return;
+
+  void seekActiveTabTo(seekSeconds, button.textContent?.trim() ?? 'candidate');
 });
 
 renderScanStatus(createIdleScanStatus());
@@ -48,15 +63,46 @@ function renderScanStatus(statusSnapshot = createIdleScanStatus()): void {
   scanMessage?.replaceChildren(document.createTextNode(view.message));
   scanProgressText?.replaceChildren(document.createTextNode(view.progressText));
   scanProgressBar?.style.setProperty('width', view.progressText);
+  scanTime?.replaceChildren(document.createTextNode(view.videoTimeText));
   scanSamples?.replaceChildren(document.createTextNode(view.sampleCountText));
   scanCandidateCount?.replaceChildren(document.createTextNode(view.candidateCountText));
+  evidenceTranscript?.replaceChildren(document.createTextNode(view.evidenceItems[0]?.value ?? '0'));
+  evidenceProgress?.replaceChildren(document.createTextNode(view.evidenceItems[1]?.value ?? '0'));
+  evidenceQr?.replaceChildren(document.createTextNode(view.evidenceItems[2]?.value ?? '0'));
   scanUpdated?.replaceChildren(document.createTextNode(view.updatedText));
 
-  if (!scanCandidates) return;
-  scanCandidates.replaceChildren(
-    ...view.candidateSummaries.map((summary) => {
+  scanCandidates?.replaceChildren(
+    ...view.candidates.map((candidate) => {
       const item = document.createElement('li');
-      item.textContent = summary;
+      const copy = document.createElement('div');
+      const summary = document.createElement('strong');
+      const detail = document.createElement('span');
+      const button = document.createElement('button');
+
+      copy.className = 'candidate-copy';
+      summary.textContent = candidate.summary;
+      detail.textContent = candidate.detail;
+      button.className = 'candidate-action';
+      button.type = 'button';
+      button.dataset.seekSeconds = String(candidate.seekSeconds);
+      button.textContent = candidate.actionLabel;
+
+      copy.append(summary, detail);
+      item.append(copy, button);
+      return item;
+    })
+  );
+
+  scanEvents?.replaceChildren(
+    ...view.events.map((event) => {
+      const item = document.createElement('li');
+      const message = document.createElement('span');
+      const age = document.createElement('time');
+
+      item.dataset.level = event.level;
+      message.textContent = event.message;
+      age.textContent = event.ageText;
+      item.append(message, age);
       return item;
     })
   );
@@ -128,6 +174,56 @@ function requestPermissions(permissions: chrome.permissions.Permissions): Promis
         return;
       }
       resolve(granted);
+    });
+  });
+}
+
+async function seekActiveTabTo(seconds: number, label: string): Promise<void> {
+  setCandidateActionStatus(`Opening ${label}...`);
+
+  try {
+    const tabId = await getActiveTabId();
+    const response = await sendSeekMessage(tabId, seconds);
+    if (!response.ok) {
+      throw new Error(response.error ?? 'YouTube tab did not accept the seek request.');
+    }
+    setCandidateActionStatus(`Jumped to ${label.replace(/^Jump to\s+/i, '')}.`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setCandidateActionStatus(`Jump failed: ${message}`);
+  }
+}
+
+function setCandidateActionStatus(message: string): void {
+  candidateActionStatus?.replaceChildren(document.createTextNode(message));
+}
+
+function getActiveTabId(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(new Error(error.message));
+        return;
+      }
+      if (tab?.id === undefined) {
+        reject(new Error('No active browser tab found.'));
+        return;
+      }
+      resolve(tab.id);
+    });
+  });
+}
+
+function sendSeekMessage(tabId: number, seconds: number): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.sendMessage(tabId, { type: seekToMessageType, seconds }, (response?: { ok: boolean; error?: string }) => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(new Error(error.message));
+        return;
+      }
+      resolve(response ?? { ok: false, error: 'No response from YouTube tab.' });
     });
   });
 }

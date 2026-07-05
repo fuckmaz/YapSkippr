@@ -18,9 +18,39 @@ export interface ScanStatusSnapshot {
   message: string;
   progress: number;
   sampleCount: number;
+  videoCurrentTimeSeconds: number | null;
+  videoDurationSeconds: number | null;
   candidateCount: number;
-  candidates: string[];
+  evidenceCounts: ScanEvidenceCounts;
+  candidates: ScanStatusCandidate[];
+  recentEvents: ScanStatusEvent[];
   updatedAt: number;
+}
+
+export interface ScanEvidenceCounts {
+  transcript: number;
+  progressBar: number;
+  qrCode: number;
+  total: number;
+}
+
+export interface ScanStatusCandidate {
+  id: string;
+  startSeconds: number;
+  endSeconds?: number;
+  confidence: number;
+  summary: string;
+  sources: string[];
+}
+
+export type ScanStatusEventLevel = 'info' | 'warn' | 'error';
+
+export interface ScanStatusEvent {
+  id: string;
+  level: ScanStatusEventLevel;
+  message: string;
+  timestamp: number;
+  detail?: string;
 }
 
 export type ScanStatusPatch = Partial<Omit<ScanStatusSnapshot, 'updatedAt'>>;
@@ -45,8 +75,12 @@ export function createIdleScanStatus(now = Date.now()): ScanStatusSnapshot {
     message: 'No active scan.',
     progress: 0,
     sampleCount: 0,
+    videoCurrentTimeSeconds: null,
+    videoDurationSeconds: null,
     candidateCount: 0,
+    evidenceCounts: createEmptyEvidenceCounts(),
     candidates: [],
+    recentEvents: [],
     updatedAt: now
   };
 }
@@ -79,11 +113,43 @@ export function normalizeScanStatus(value: unknown, now = Date.now()): ScanStatu
     message: typeof value.message === 'string' && value.message.trim() ? value.message : 'No active scan.',
     progress: clamp(numberOr(value.progress, 0), 0, 1),
     sampleCount: nonNegativeInteger(value.sampleCount),
+    videoCurrentTimeSeconds: nullableNonNegativeNumber(value.videoCurrentTimeSeconds),
+    videoDurationSeconds: nullableNonNegativeNumber(value.videoDurationSeconds),
     candidateCount: nonNegativeInteger(value.candidateCount),
-    candidates: Array.isArray(value.candidates)
-      ? value.candidates.filter((candidate): candidate is string => typeof candidate === 'string').slice(0, 5)
-      : [],
+    evidenceCounts: normalizeEvidenceCounts(value.evidenceCounts),
+    candidates: normalizeCandidates(value.candidates),
+    recentEvents: normalizeEvents(value.recentEvents),
     updatedAt: nonNegativeInteger(value.updatedAt, now)
+  };
+}
+
+export function appendScanStatusEvent(
+  status: ScanStatusSnapshot,
+  event: Omit<ScanStatusEvent, 'id'> & { id?: string }
+): ScanStatusSnapshot {
+  const timestamp = nonNegativeInteger(event.timestamp, Date.now());
+  return {
+    ...status,
+    updatedAt: timestamp,
+    recentEvents: [
+      {
+        id: event.id ?? `${timestamp}-${event.message}`,
+        level: event.level,
+        message: event.message,
+        timestamp,
+        ...(event.detail ? { detail: event.detail } : {})
+      },
+      ...status.recentEvents
+    ].slice(0, 8)
+  };
+}
+
+export function createEmptyEvidenceCounts(): ScanEvidenceCounts {
+  return {
+    transcript: 0,
+    progressBar: 0,
+    qrCode: 0,
+    total: 0
   };
 }
 
@@ -99,6 +165,10 @@ function nullableString(value: unknown): string | null {
   return typeof value === 'string' && value ? value : null;
 }
 
+function nullableNonNegativeNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 function numberOr(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -109,4 +179,79 @@ function nonNegativeInteger(value: unknown, fallback = 0): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizeEvidenceCounts(value: unknown): ScanEvidenceCounts {
+  if (!isRecord(value)) return createEmptyEvidenceCounts();
+
+  const transcript = nonNegativeInteger(value.transcript);
+  const progressBar = nonNegativeInteger(value.progressBar);
+  const qrCode = nonNegativeInteger(value.qrCode);
+  const total = nonNegativeInteger(value.total, transcript + progressBar + qrCode);
+
+  return {
+    transcript,
+    progressBar,
+    qrCode,
+    total
+  };
+}
+
+function normalizeCandidates(value: unknown): ScanStatusCandidate[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((candidate): ScanStatusCandidate[] => {
+    if (!isRecord(candidate)) return [];
+    const id = nullableString(candidate.id);
+    const summary = nullableString(candidate.summary);
+    const startSeconds = nullableNonNegativeNumber(candidate.startSeconds);
+    const confidence = typeof candidate.confidence === 'number' && Number.isFinite(candidate.confidence)
+      ? clamp(candidate.confidence, 0, 1)
+      : null;
+
+    if (!id || !summary || startSeconds === null || confidence === null) return [];
+
+    return [
+      {
+        id,
+        startSeconds,
+        ...(nullableNonNegativeNumber(candidate.endSeconds) !== null
+          ? { endSeconds: nullableNonNegativeNumber(candidate.endSeconds) as number }
+          : {}),
+        confidence,
+        summary,
+        sources: Array.isArray(candidate.sources)
+          ? candidate.sources.filter((source): source is string => typeof source === 'string' && source.length > 0)
+          : []
+      }
+    ];
+  }).slice(0, 5);
+}
+
+function normalizeEvents(value: unknown): ScanStatusEvent[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((event): ScanStatusEvent[] => {
+    if (!isRecord(event)) return [];
+    const id = nullableString(event.id);
+    const level = event.level;
+    const message = nullableString(event.message);
+    const timestamp = nullableNonNegativeNumber(event.timestamp);
+
+    if (!id || !isEventLevel(level) || !message || timestamp === null) return [];
+
+    return [
+      {
+        id,
+        level,
+        message,
+        timestamp,
+        ...(nullableString(event.detail) ? { detail: nullableString(event.detail) as string } : {})
+      }
+    ];
+  }).slice(0, 8);
+}
+
+function isEventLevel(value: unknown): value is ScanStatusEventLevel {
+  return value === 'info' || value === 'warn' || value === 'error';
 }

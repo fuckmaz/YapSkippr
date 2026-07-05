@@ -4,6 +4,8 @@ YapSkippr is a YouTube-focused browser extension prototype for detecting likely 
 
 V1 is detection-only. It samples local video frames, crawls available YouTube caption tracks, fuses evidence into candidate segments, logs progress to the page console, and shows a compact status block near the YouTube player. It does not auto-skip.
 
+The extension popup mirrors the active scan live. It shows the current phase, frame count, video timing, evidence source counts, recent scan activity, detected candidate segments, and jump actions for candidate start times.
+
 ## Development
 
 ```bash
