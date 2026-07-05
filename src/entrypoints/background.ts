@@ -1,3 +1,8 @@
+import { createIdleScanStatus } from '../core/scan-status';
+import { readStoredScanStatus, subscribeToStoredScanStatus } from '../core/scan-status-storage';
+import type { ScanStatusSnapshot } from '../core/scan-status';
+import { createActionBadgeView } from '../ui/action-badge-view';
+
 const CAPTURE_MESSAGE_TYPE = 'YAPSKIPPR_CAPTURE_VISIBLE_TAB';
 
 interface CaptureVisibleTabRequest {
@@ -12,6 +17,9 @@ interface CaptureVisibleTabResponse {
 
 export default defineBackground(() => {
   console.log('[YapSkippr] background ready');
+  void refreshActionBadge();
+  subscribeToStoredScanStatus(updateActionBadge);
+  setInterval(() => void refreshActionBadge(), 15_000);
 
   chrome.runtime.onMessage.addListener((
     message: CaptureVisibleTabRequest,
@@ -38,3 +46,25 @@ export default defineBackground(() => {
     return true;
   });
 });
+
+async function refreshActionBadge(): Promise<void> {
+  try {
+    updateActionBadge(await readStoredScanStatus());
+  } catch {
+    updateActionBadge(createIdleScanStatus());
+  }
+}
+
+function updateActionBadge(status: ScanStatusSnapshot): void {
+  const action = getActionApi();
+  if (!action) return;
+
+  const view = createActionBadgeView(status);
+  action.setBadgeText({ text: view.text });
+  action.setBadgeBackgroundColor({ color: view.color });
+  action.setTitle({ title: view.title });
+}
+
+function getActionApi(): Pick<typeof chrome.action, 'setBadgeBackgroundColor' | 'setBadgeText' | 'setTitle'> | undefined {
+  return chrome.action ?? chrome.browserAction;
+}

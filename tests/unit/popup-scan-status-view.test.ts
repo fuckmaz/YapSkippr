@@ -112,3 +112,34 @@ test('formats idle scan state for the popup', () => {
     isRunning: false
   });
 });
+
+test('labels stale running scan state in the popup', () => {
+  const snapshot: ScanStatusSnapshot = {
+    platformId: 'youtube',
+    videoId: 'abc123',
+    pageUrl: 'https://www.youtube.com/watch?v=abc123',
+    phase: 'frames',
+    message: 'Analyzing frames...',
+    progress: 0.4,
+    sampleCount: 4,
+    videoCurrentTimeSeconds: 40,
+    videoDurationSeconds: 200,
+    candidateCount: 0,
+    evidenceCounts: {
+      transcript: 0,
+      progressBar: 0,
+      qrCode: 0,
+      total: 0
+    },
+    candidates: [],
+    recentEvents: [],
+    updatedAt: 1_000
+  };
+
+  expect(createPopupScanStatusView(snapshot, 30_000)).toMatchObject({
+    title: 'YouTube scan',
+    phaseLabel: 'Stale',
+    updatedText: 'Updated 29s ago',
+    isRunning: false
+  });
+});

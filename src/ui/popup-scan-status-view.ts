@@ -1,4 +1,4 @@
-import type { ScanStatusPhase, ScanStatusSnapshot } from '../core/scan-status';
+import { isScanStatusStale, type ScanStatusPhase, type ScanStatusSnapshot } from '../core/scan-status';
 
 export interface PopupScanStatusView {
   title: string;
@@ -54,10 +54,11 @@ export function createPopupScanStatusView(
   now = Date.now()
 ): PopupScanStatusView {
   const progressPercent = Math.round(clamp(status.progress, 0, 1) * 100);
+  const stale = isScanStatusStale(status, now);
 
   return {
     title: status.phase === 'idle' ? 'No active scan' : `${formatPlatform(status.platformId)} scan`,
-    phaseLabel: phaseLabels[status.phase],
+    phaseLabel: stale ? 'Stale' : phaseLabels[status.phase],
     message: status.message,
     progressPercent,
     progressText: `${progressPercent}%`,
@@ -83,7 +84,7 @@ export function createPopupScanStatusView(
       ageText: formatAge(event.timestamp, now)
     })),
     updatedText: formatUpdatedAt(status.updatedAt, now),
-    isRunning: runningPhases.has(status.phase)
+    isRunning: !stale && runningPhases.has(status.phase)
   };
 }
 

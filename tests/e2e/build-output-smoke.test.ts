@@ -27,6 +27,11 @@ test('Chrome build output contains the YouTube content script and preserved meta
   expect(contentScript).toContain('frame-progress-bar');
   expect(contentScript).toContain('frame-qr-code');
 
+  const backgroundScript = await readFile(join(process.cwd(), '.output/chrome-mv3/background.js'), 'utf8');
+  expect(backgroundScript).toContain('setBadgeText');
+  expect(backgroundScript).toContain('setBadgeBackgroundColor');
+  expect(backgroundScript).toContain('yapskippr.scanStatus');
+
   const popupHtml = await readFile(join(process.cwd(), '.output/chrome-mv3/popup.html'), 'utf8');
   expect(popupHtml).toContain('Grant frame capture access');
   expect(popupHtml).toContain('Current scan');

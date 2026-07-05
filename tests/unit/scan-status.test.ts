@@ -1,6 +1,7 @@
 import {
   appendScanStatusEvent,
   createIdleScanStatus,
+  isScanStatusStale,
   mergeScanStatus,
   normalizeScanStatus
 } from '../../src/core/scan-status';
@@ -106,4 +107,16 @@ test('appends recent events newest first and limits the timeline', () => {
   expect(status.recentEvents).toHaveLength(8);
   expect(status.recentEvents[0]?.message).toBe('Event 9');
   expect(status.recentEvents.at(-1)?.message).toBe('Event 2');
+});
+
+test('marks running scan status stale after the threshold', () => {
+  const status = mergeScanStatus(createIdleScanStatus(0), {
+    phase: 'frames',
+    message: 'Analyzing frames...',
+    progress: 0.4
+  }, 1_000);
+
+  expect(isScanStatusStale(status, 10_000, 15_000)).toBe(false);
+  expect(isScanStatusStale(status, 17_001, 15_000)).toBe(true);
+  expect(isScanStatusStale({ ...status, phase: 'stopped' }, 60_000, 15_000)).toBe(false);
 });

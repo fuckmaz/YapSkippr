@@ -66,6 +66,8 @@ const phases = new Set<ScanStatusPhase>([
   'error'
 ]);
 
+const runningPhases = new Set<ScanStatusPhase>(['starting', 'transcript', 'frames', 'fusion']);
+
 export function createIdleScanStatus(now = Date.now()): ScanStatusSnapshot {
   return {
     platformId: null,
@@ -151,6 +153,10 @@ export function createEmptyEvidenceCounts(): ScanEvidenceCounts {
     qrCode: 0,
     total: 0
   };
+}
+
+export function isScanStatusStale(status: ScanStatusSnapshot, now = Date.now(), thresholdMs = 15_000): boolean {
+  return runningPhases.has(status.phase) && now - status.updatedAt > thresholdMs;
 }
 
 function isScanStatusPhase(value: unknown): value is ScanStatusPhase {
