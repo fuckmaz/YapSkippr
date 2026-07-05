@@ -1,7 +1,7 @@
 import type { TranscriptCue } from '../../core/types';
 import { mountPlayerStatusUi } from '../../ui/player-status-ui';
 import type { StatusUiHandle, VideoPlatformAdapter } from '../adapter';
-import { loadYouTubeTranscript } from './transcript-provider';
+import { loadYouTubeTranscriptForPage } from './transcript-provider';
 
 export function createYouTubeAdapter(doc: Document = document): VideoPlatformAdapter {
   return {
@@ -12,7 +12,7 @@ export function createYouTubeAdapter(doc: Document = document): VideoPlatformAda
     getCurrentTimeSeconds: () => doc.querySelector<HTMLVideoElement>('video.html5-main-video')?.currentTime ?? 0,
     observeVideoChanges: (onChange) => observeVideoElementChanges(doc, onChange),
     loadTranscript: async (): Promise<TranscriptCue[]> => {
-      const result = await loadYouTubeTranscript(doc.documentElement.outerHTML);
+      const result = await loadYouTubeTranscriptForPage(new URL(location.href), doc.documentElement.outerHTML);
       return result.cues;
     },
     mountStatusUi: async (): Promise<StatusUiHandle> => mountPlayerStatusUi(doc)
