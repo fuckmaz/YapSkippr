@@ -8,13 +8,37 @@ const DEFAULT_HIGH_CONFIDENCE_DURATION_SECONDS = 120;
 export function buildSegmentCandidates(evidence: TimedEvidence[]): SegmentCandidate[] {
   const sorted = [...evidence].sort((a, b) => a.startSeconds - b.startSeconds);
   const starts = sorted.filter((item) => item.kind === 'ad-read-start');
-  const seedEvidence = starts.length > 0 ? starts : sorted.filter((item) => item.kind === 'ad-read-presence');
-
-  const candidates = seedEvidence.map((seed) => buildCandidateFromSeed(seed, sorted));
+  const candidates =
+    starts.length > 0
+      ? starts.map((seed) => buildCandidateFromSeed(seed, sorted))
+      : buildPresenceOnlyCandidates(sorted.filter((item) => item.kind === 'ad-read-presence'));
 
   return candidates
     .filter((candidate) => candidate.confidence >= DISPLAY_THRESHOLD)
     .sort((a, b) => a.startSeconds - b.startSeconds);
+}
+
+function buildPresenceOnlyCandidates(presenceEvidence: TimedEvidence[]): SegmentCandidate[] {
+  const groups: TimedEvidence[][] = [];
+
+  for (const item of presenceEvidence) {
+    const currentGroup = groups[groups.length - 1];
+    const previous = currentGroup?.[currentGroup.length - 1];
+    if (currentGroup && previous && item.startSeconds - previous.startSeconds <= PRESENCE_WINDOW_SECONDS) {
+      currentGroup.push(item);
+    } else {
+      groups.push([item]);
+    }
+  }
+
+  return groups.map((group) => {
+    const sorted = group.sort((a, b) => a.startSeconds - b.startSeconds);
+    return {
+      startSeconds: sorted[0]?.startSeconds ?? 0,
+      confidence: scoreEvidence(sorted),
+      evidence: sorted
+    };
+  });
 }
 
 function buildCandidateFromSeed(seed: TimedEvidence, allEvidence: TimedEvidence[]): SegmentCandidate {
