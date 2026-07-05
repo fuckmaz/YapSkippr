@@ -7,11 +7,14 @@ test('Chrome build output contains the YouTube content script and preserved meta
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as {
     name?: string;
     description?: string;
+    host_permissions?: string[];
+    permissions?: string[];
     content_scripts?: Array<{ matches?: string[]; js?: string[] }>;
   };
 
   expect(manifest.name).toBe('YapSkippr');
   expect(manifest.description).toBe('In-Video Sponsorship- and Ad-Skipper');
+  expect(manifest.host_permissions).toContain('<all_urls>');
   expect(manifest.content_scripts?.[0]?.matches).toContain('https://youtube.com/*');
   expect(manifest.content_scripts?.[0]?.matches).toContain('https://*.youtube.com/*');
   expect(manifest.content_scripts?.[0]?.matches).toContain('https://www.youtube.com/*');

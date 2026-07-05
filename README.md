@@ -57,3 +57,5 @@ npm test
 ## Privacy
 
 Frame samples, transcript cues, and detection results stay inside the browser. The extension has no backend and does not upload video data.
+
+YapSkippr declares the broad `<all_urls>` host permission because browser APIs require it for automatic `tabs.captureVisibleTab()` frame sampling. The content script is still scoped to YouTube URLs, and captured frames are processed locally.
