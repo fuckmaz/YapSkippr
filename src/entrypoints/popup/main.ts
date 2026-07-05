@@ -1,17 +1,66 @@
 import './style.css';
+import { createIdleScanStatus } from '../../core/scan-status';
+import { readStoredScanStatus, subscribeToStoredScanStatus } from '../../core/scan-status-storage';
+import { createPopupScanStatusView } from '../../ui/popup-scan-status-view';
 
 const frameCaptureOrigins = ['<all_urls>'];
 const status = document.querySelector('#status');
 const permissionStatus = document.querySelector('#permission-status');
 const grantAccessButton = document.querySelector<HTMLButtonElement>('#grant-access');
+const scanTitle = document.querySelector('#scan-title');
+const scanPhase = document.querySelector('#scan-phase');
+const scanMessage = document.querySelector('#scan-message');
+const scanProgressText = document.querySelector('#scan-progress-text');
+const scanProgressBar = document.querySelector<HTMLElement>('#scan-progress-bar');
+const scanSamples = document.querySelector('#scan-samples');
+const scanCandidateCount = document.querySelector('#scan-candidate-count');
+const scanCandidates = document.querySelector<HTMLOListElement>('#scan-candidates');
+const scanUpdated = document.querySelector('#scan-updated');
 
-status?.replaceChildren(document.createTextNode('Detection logs are shown in the YouTube tab console for V1.'));
+status?.replaceChildren(document.createTextNode('Detection status is mirrored here while a YouTube tab is scanning.'));
 
 grantAccessButton?.addEventListener('click', () => {
   void requestFrameCaptureAccess();
 });
 
+renderScanStatus(createIdleScanStatus());
+void loadScanStatus();
+const stopScanStatusSubscription = subscribeToStoredScanStatus(renderScanStatus);
+window.addEventListener('pagehide', stopScanStatusSubscription, { once: true });
+
 void refreshFrameCaptureAccess();
+
+async function loadScanStatus(): Promise<void> {
+  try {
+    renderScanStatus(await readStoredScanStatus());
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    renderScanStatus(createIdleScanStatus());
+    scanMessage?.replaceChildren(document.createTextNode(`Could not load scan status: ${message}`));
+  }
+}
+
+function renderScanStatus(statusSnapshot = createIdleScanStatus()): void {
+  const view = createPopupScanStatusView(statusSnapshot);
+
+  scanTitle?.replaceChildren(document.createTextNode(view.title));
+  scanPhase?.replaceChildren(document.createTextNode(view.phaseLabel));
+  scanMessage?.replaceChildren(document.createTextNode(view.message));
+  scanProgressText?.replaceChildren(document.createTextNode(view.progressText));
+  scanProgressBar?.style.setProperty('width', view.progressText);
+  scanSamples?.replaceChildren(document.createTextNode(view.sampleCountText));
+  scanCandidateCount?.replaceChildren(document.createTextNode(view.candidateCountText));
+  scanUpdated?.replaceChildren(document.createTextNode(view.updatedText));
+
+  if (!scanCandidates) return;
+  scanCandidates.replaceChildren(
+    ...view.candidateSummaries.map((summary) => {
+      const item = document.createElement('li');
+      item.textContent = summary;
+      return item;
+    })
+  );
+}
 
 async function refreshFrameCaptureAccess(): Promise<void> {
   setPermissionStatus('Checking frame capture access...');

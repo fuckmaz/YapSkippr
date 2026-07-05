@@ -10,6 +10,31 @@
     <main>
       <h1>YapSkippr</h1>
       <p id="status">Open a YouTube video to scan for ad-read cues.</p>
+      <section class="scan-panel" aria-label="Current scan">
+        <h2>Current scan</h2>
+        <div class="scan-row">
+          <span id="scan-title">No active scan</span>
+          <span id="scan-progress-text">0%</span>
+        </div>
+        <p id="scan-message">No active scan.</p>
+        <div class="scan-meter" aria-hidden="true"><span id="scan-progress-bar"></span></div>
+        <dl class="scan-metrics">
+          <div>
+            <dt>Phase</dt>
+            <dd id="scan-phase">Idle</dd>
+          </div>
+          <div>
+            <dt>Frames</dt>
+            <dd id="scan-samples">0 frames</dd>
+          </div>
+          <div>
+            <dt>Candidates</dt>
+            <dd id="scan-candidate-count">0 candidates</dd>
+          </div>
+        </dl>
+        <ol id="scan-candidates" class="scan-candidates"></ol>
+        <p id="scan-updated" class="scan-updated">Not updated yet.</p>
+      </section>
       <section aria-label="Frame capture access">
         <p id="permission-status">Checking frame capture access...</p>
         <button id="grant-access" type="button">Grant frame capture access</button>

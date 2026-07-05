@@ -8,9 +8,12 @@ import {
   startScreenshotFrameSampler
 } from '../../core/analysis/frame-sampler';
 import { analyzeTranscriptCues } from '../../core/analysis/transcript-analyzer';
+import { createIdleScanStatus, mergeScanStatus, type ScanStatusPatch, type ScanStatusPhase } from '../../core/scan-status';
+import { writeStoredScanStatus } from '../../core/scan-status-storage';
 import type { TimedEvidence } from '../../core/types';
 import { createYouTubeAdapter } from '../../platform/youtube/youtube-adapter';
 import { observeLocationChanges } from '../../platform/youtube/route-observer';
+import { formatCandidateSummary } from '../../ui/candidate-summary';
 import { createLogger } from '../../ui/logger';
 
 const logger = createLogger('youtube-content');
@@ -51,19 +54,48 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
   let stopped = false;
   let sampleCount = 0;
   let stopFrames: (() => void) | undefined;
+  let scanStatus = mergeScanStatus(createIdleScanStatus(), {
+    platformId: adapter.id,
+    videoId: adapter.getVideoId(),
+    pageUrl: location.href,
+    phase: 'starting',
+    message: 'Starting YapSkippr scan...'
+  });
 
-  statusUi.setStatus('Finding YouTube video...');
-  statusUi.setProgress(0.05);
+  function publishScanStatus(patch: ScanStatusPatch): void {
+    scanStatus = mergeScanStatus(scanStatus, patch);
+    void writeStoredScanStatus(scanStatus).catch((error: unknown) => {
+      logger.warn('popup status update failed', error);
+    });
+  }
+
+  function setScanProgress(
+    message: string,
+    progress: number,
+    phase: ScanStatusPhase,
+    patch: ScanStatusPatch = {}
+  ): void {
+    statusUi.setStatus(message);
+    statusUi.setProgress(progress);
+    publishScanStatus({ ...patch, message, progress, phase });
+  }
+
+  function publishCandidates(candidates: ReturnType<typeof buildSegmentCandidates>): void {
+    publishScanStatus({
+      candidateCount: candidates.length,
+      candidates: candidates.slice(0, 5).map((candidate) => formatCandidateSummary(candidate))
+    });
+  }
+
+  setScanProgress('Finding YouTube video...', 0.05, 'starting');
 
   const video = await waitForVideo(adapter);
   if (!video || stopped) {
-    statusUi.setStatus('No playable video found.');
-    statusUi.setProgress(1);
+    setScanProgress('No playable video found.', 1, 'error');
     return () => statusUi.destroy();
   }
 
-  statusUi.setStatus('Loading transcript cues...');
-  statusUi.setProgress(0.2);
+  setScanProgress('Loading transcript cues...', 0.2, 'transcript');
 
   void adapter
     .loadTranscript()
@@ -72,14 +104,12 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
       const transcriptEvidence = analyzeTranscriptCues(cues);
       evidence.push(...transcriptEvidence);
       logger.info('transcript analyzed', { cues: cues.length, evidence: transcriptEvidence.length });
-      updateCandidates(evidence, statusUi);
-      statusUi.setStatus('Analyzing visible video frames...');
-      statusUi.setProgress(0.35);
+      publishCandidates(updateCandidates(evidence, statusUi));
+      setScanProgress('Analyzing visible video frames...', 0.35, 'frames');
     })
     .catch((error: unknown) => {
       logger.warn('transcript unavailable', error);
-      statusUi.setStatus('Transcript unavailable; analyzing frames...');
-      statusUi.setProgress(0.3);
+      setScanProgress('Transcript unavailable; analyzing frames...', 0.3, 'frames');
     });
 
   stopFrames = startScreenshotFrameSampler(video, {
@@ -101,33 +131,39 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
       if (frameEvidence.length > 0) {
         evidence.push(...frameEvidence);
         logger.info('frame evidence detected', frameEvidence);
-        updateCandidates(evidence, statusUi);
+        publishCandidates(updateCandidates(evidence, statusUi));
       }
 
-      statusUi.setProgress(Math.min(0.95, 0.35 + sampleCount / 40));
-      statusUi.setStatus(`Analyzing frames... ${sampleCount} sampled`);
+      setScanProgress(`Analyzing frames... ${sampleCount} sampled`, Math.min(0.95, 0.35 + sampleCount / 40), 'frames', {
+        sampleCount
+      });
     },
     onError(error) {
       if (isExtensionContextInvalidatedError(error)) {
         logger.warn('frame sampling stopped because extension context was invalidated', error.message);
-        statusUi.setStatus('Extension reloaded. Reload this YouTube tab to resume frame analysis.');
+        setScanProgress('Extension reloaded. Reload this YouTube tab to resume frame analysis.', scanStatus.progress, 'error');
         stopFrames?.();
         return;
       }
       if (isCapturePermissionMissingError(error)) {
         logger.warn('frame sampling stopped because capture permission is missing', error.message);
-        statusUi.setStatus('Frame capture permission missing. Click the YapSkippr extension icon, grant access, then reload this tab.');
+        setScanProgress(
+          'Frame capture permission missing. Click the YapSkippr extension icon, grant access, then reload this tab.',
+          scanStatus.progress,
+          'permission'
+        );
         stopFrames?.();
         return;
       }
       logger.warn('frame sampling failed', error.message);
-      statusUi.setStatus('Frame capture unavailable; transcript scan continues.');
+      setScanProgress('Frame capture unavailable; transcript scan continues.', scanStatus.progress, 'error');
     }
   });
 
   return () => {
     stopped = true;
     stopFrames?.();
+    publishScanStatus({ phase: 'stopped', message: 'Scan stopped.' });
     statusUi.destroy();
   };
 }
@@ -142,8 +178,12 @@ async function waitForVideo(adapter: ReturnType<typeof createYouTubeAdapter>, ti
   return adapter.getVideoElement();
 }
 
-function updateCandidates(evidence: TimedEvidence[], statusUi: { setCandidates(candidates: ReturnType<typeof buildSegmentCandidates>): void }): void {
+function updateCandidates(
+  evidence: TimedEvidence[],
+  statusUi: { setCandidates(candidates: ReturnType<typeof buildSegmentCandidates>): void }
+): ReturnType<typeof buildSegmentCandidates> {
   const candidates = buildSegmentCandidates(evidence);
   statusUi.setCandidates(candidates);
   logger.info('segment candidates updated', candidates);
+  return candidates;
 }

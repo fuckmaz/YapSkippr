@@ -1,5 +1,5 @@
 body {
-  min-width: 280px;
+  min-width: 320px;
   margin: 0;
   background: #101010;
   color: #f5f5f5;
@@ -15,6 +15,11 @@ h1 {
   font-size: 16px;
 }
 
+h2 {
+  margin: 0;
+  font-size: 13px;
+}
+
 p {
   margin: 0;
   line-height: 1.4;
@@ -23,7 +28,85 @@ p {
 section {
   display: grid;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 14px;
+}
+
+.scan-panel {
+  padding-top: 12px;
+  border-top: 1px solid #2d2d2d;
+}
+
+.scan-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 650;
+}
+
+#scan-title,
+#scan-progress-text {
+  min-width: 0;
+}
+
+#scan-message,
+.scan-updated {
+  color: #cfcfcf;
+}
+
+.scan-meter {
+  height: 5px;
+  border-radius: 999px;
+  background: #2b2b2b;
+  overflow: hidden;
+}
+
+.scan-meter span {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: #33c481;
+}
+
+.scan-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.scan-metrics div {
+  min-width: 0;
+}
+
+.scan-metrics dt {
+  color: #a7a7a7;
+  font-size: 11px;
+}
+
+.scan-metrics dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.scan-candidates {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.scan-candidates:empty {
+  display: none;
+}
+
+.scan-candidates li {
+  margin-top: 4px;
+  color: #dedede;
+  line-height: 1.35;
+}
+
+.scan-updated {
+  font-size: 11px;
 }
 
 button {
