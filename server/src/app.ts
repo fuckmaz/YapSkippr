@@ -1,6 +1,7 @@
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
@@ -32,10 +33,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   });
 
   const adminDist = path.resolve(process.cwd(), 'dist/admin');
-  if (existsSync(adminDist)) {
+  const adminAssets = path.join(adminDist, 'assets');
+  if (existsSync(adminAssets)) {
     await app.register(fastifyStatic, {
-      root: adminDist,
-      prefix: '/admin/'
+      root: adminAssets,
+      prefix: '/admin/assets/'
     });
   }
 
@@ -59,6 +61,16 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     return reply.send(model);
   });
 
+  app.post('/admin/session', async (request, reply) => {
+    const token = extractAdminSessionToken(request.body);
+    if (token !== adminToken) {
+      return reply.status(401).send({ ok: false, error: 'Invalid admin token.' });
+    }
+
+    reply.header('set-cookie', buildAdminCookie(adminToken));
+    return { ok: true };
+  });
+  app.get('/admin/api/session', { preHandler: requireAdmin(adminToken) }, async () => ({ ok: true }));
   app.get('/admin/api/summary', { preHandler: requireAdmin(adminToken) }, async () => repository.getSummary());
   app.get('/admin/api/feedback', { preHandler: requireAdmin(adminToken) }, async () => ({
     items: await repository.listFeedback()
@@ -110,7 +122,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     return { modelId: id, metrics: model.metrics, trainingSetSummary: model.trainingSetSummary };
   });
 
-  app.get('/admin', async (_request, reply) => {
+  app.get('/admin', async (request, reply) => {
+    if (!isAdminRequest(request, adminToken)) {
+      return reply.type('text/html').send(renderAdminLoginPage());
+    }
     if (existsSync(path.join(adminDist, 'index.html'))) {
       return reply.sendFile('index.html', adminDist);
     }
@@ -122,7 +137,98 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
 function requireAdmin(adminToken: string) {
   return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
-    if (request.headers['x-admin-token'] === adminToken) return;
+    if (isAdminRequest(request, adminToken)) return;
     await reply.status(401).send({ ok: false, error: 'Admin authentication required.' });
   };
+}
+
+function isAdminRequest(request: FastifyRequest, adminToken: string): boolean {
+  return request.headers['x-admin-token'] === adminToken || hasValidAdminCookie(request.headers.cookie, adminToken);
+}
+
+function extractAdminSessionToken(body: unknown): string | null {
+  if (!isRecord(body)) return null;
+  return typeof body.token === 'string' ? body.token : null;
+}
+
+function buildAdminCookie(adminToken: string): string {
+  return [
+    `yapskippr_admin=${adminSessionSignature(adminToken)}`,
+    'Path=/admin',
+    'HttpOnly',
+    'SameSite=Lax',
+    'Max-Age=604800'
+  ].join('; ');
+}
+
+function hasValidAdminCookie(cookieHeader: string | undefined, adminToken: string): boolean {
+  const cookie = parseCookies(cookieHeader).yapskippr_admin;
+  if (!cookie) return false;
+
+  const expected = adminSessionSignature(adminToken);
+  const cookieBuffer = Buffer.from(cookie);
+  const expectedBuffer = Buffer.from(expected);
+  return cookieBuffer.length === expectedBuffer.length && timingSafeEqual(cookieBuffer, expectedBuffer);
+}
+
+function adminSessionSignature(adminToken: string): string {
+  return createHmac('sha256', adminToken).update('yapskippr-admin-session-v1').digest('hex');
+}
+
+function parseCookies(cookieHeader: string | undefined): Record<string, string> {
+  if (!cookieHeader) return {};
+  return Object.fromEntries(
+    cookieHeader.split(';').flatMap((part): Array<[string, string]> => {
+      const [key, ...valueParts] = part.trim().split('=');
+      if (!key || valueParts.length === 0) return [];
+      return [[key, valueParts.join('=')]];
+    })
+  );
+}
+
+function renderAdminLoginPage(): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YapSkippr Admin</title>
+    <style>
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #071015; color: #eef6f8; font: 14px system-ui, sans-serif; }
+      form { width: min(420px, calc(100vw - 32px)); display: grid; gap: 14px; padding: 22px; border: 1px solid #24333d; border-radius: 8px; background: #0d171e; box-shadow: 0 20px 60px rgba(0,0,0,.32); }
+      h1, p { margin: 0; }
+      p { color: #95a8b1; line-height: 1.45; }
+      input, button { min-height: 40px; border-radius: 7px; font: inherit; }
+      input { border: 1px solid #24333d; background: #111d25; color: #eef6f8; padding: 0 12px; }
+      button { border: 0; background: #36d278; color: #04130a; font-weight: 800; cursor: pointer; }
+      small { min-height: 18px; color: #ef4f55; }
+    </style>
+  </head>
+  <body>
+    <form id="login">
+      <h1>Admin access required</h1>
+      <p>Enter the YapSkippr server admin token to open the dashboard.</p>
+      <input name="token" type="password" autocomplete="current-password" placeholder="Admin token" required />
+      <button type="submit">Unlock dashboard</button>
+      <small id="error"></small>
+    </form>
+    <script>
+      document.querySelector('#login').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const token = new FormData(event.currentTarget).get('token');
+        const response = await fetch('/admin/session', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        if (response.ok) location.reload();
+        else document.querySelector('#error').textContent = 'Invalid admin token.';
+      });
+    </script>
+  </body>
+</html>`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

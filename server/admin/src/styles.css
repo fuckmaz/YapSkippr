@@ -758,6 +758,12 @@ tr:last-child td {
   padding: 0 11px;
 }
 
+.login-error {
+  grid-column: 1 / -1;
+  color: var(--red);
+  font-size: 12px;
+}
+
 .alert {
   display: flex;
   align-items: center;

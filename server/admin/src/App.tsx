@@ -115,7 +115,6 @@ interface DashboardData {
   trainingRuns: TrainingRun[];
 }
 
-const tokenStorageKey = 'yapskippr.adminToken';
 const themeStorageKey = 'yapskippr.adminTheme';
 
 const navigation = [
@@ -129,7 +128,8 @@ const navigation = [
 
 export function App(): JSX.Element {
   const [page, setPage] = useState<Page>('overview');
-  const [token, setToken] = useState(() => localStorage.getItem(tokenStorageKey) ?? '');
+  const [token, setToken] = useState(() => localStorage.getItem('yapskippr.adminToken') ?? '');
+  const [sessionAuthenticated, setSessionAuthenticated] = useState(false);
   const [themePreference, setThemePreference] = useThemePreference();
   const [data, setData] = useState<DashboardData>({
     summary: null,
@@ -140,9 +140,10 @@ export function App(): JSX.Element {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasAuth = Boolean(token) || sessionAuthenticated;
 
   async function refresh(): Promise<void> {
-    if (!token) return;
+    if (!hasAuth) return;
     setLoading(true);
     setError(null);
     try {
@@ -168,11 +169,28 @@ export function App(): JSX.Element {
 
   useEffect(() => {
     void refresh();
+  }, [token, sessionAuthenticated]);
+
+  useEffect(() => {
+    if (token) return;
+    void api<{ ok: boolean }>('/admin/api/session', '').then(() => {
+      setSessionAuthenticated(true);
+    }).catch(() => {
+      setSessionAuthenticated(false);
+    });
   }, [token]);
 
-  function saveToken(value: string): void {
-    localStorage.setItem(tokenStorageKey, value);
-    setToken(value);
+  async function saveToken(value: string): Promise<void> {
+    const response = await fetch('/admin/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ token: value })
+    });
+    if (!response.ok) throw new Error('Invalid admin token.');
+    localStorage.removeItem('yapskippr.adminToken');
+    setToken('');
+    setSessionAuthenticated(true);
   }
 
   return (
@@ -220,10 +238,10 @@ export function App(): JSX.Element {
           </div>
         </header>
 
-        {!token ? <LoginPanel onSave={saveToken} /> : null}
+        {!hasAuth ? <LoginPanel onSave={saveToken} /> : null}
         {error ? <div className="alert"><XCircle size={18} /> {error}</div> : null}
 
-        {token ? (
+        {hasAuth ? (
           <>
             {page === 'overview' ? <Overview data={data} onPageChange={setPage} /> : null}
             {page === 'review' ? <ReviewQueue token={token} data={data} onRefresh={refresh} /> : null}
@@ -658,8 +676,21 @@ function ThemeSwitch({ value, onChange }: { value: ThemePreference; onChange: (v
   );
 }
 
-function LoginPanel({ onSave }: { onSave: (token: string) => void }): JSX.Element {
+function LoginPanel({ onSave }: { onSave: (token: string) => Promise<void> }): JSX.Element {
   const [value, setValue] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  async function submit(): Promise<void> {
+    setBusy(true);
+    setError(null);
+    try {
+      await onSave(value);
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : String(loginError));
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <section className="login-panel">
       <Shield size={22} />
@@ -668,7 +699,10 @@ function LoginPanel({ onSave }: { onSave: (token: string) => void }): JSX.Elemen
         <p>Enter the `ADMIN_TOKEN` configured on the YapSkippr server.</p>
       </div>
       <input type="password" value={value} onChange={(event) => setValue(event.target.value)} placeholder="Admin token" />
-      <button type="button" className="primary" onClick={() => onSave(value)}>Unlock dashboard</button>
+      <button type="button" className="primary" onClick={() => void submit()} disabled={busy}>
+        {busy ? 'Checking...' : 'Unlock dashboard'}
+      </button>
+      {error ? <span className="login-error">{error}</span> : null}
     </section>
   );
 }
@@ -685,13 +719,15 @@ function useThemePreference(): [ThemePreference, (value: ThemePreference) => voi
 }
 
 async function api<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
+  const headers = {
+    'content-type': 'application/json',
+    ...(token ? { 'x-admin-token': token } : {}),
+    ...(init.headers ?? {})
+  };
   const response = await fetch(path, {
     ...init,
-    headers: {
-      'content-type': 'application/json',
-      'x-admin-token': token,
-      ...(init.headers ?? {})
-    }
+    credentials: 'same-origin',
+    headers
   });
   if (!response.ok) throw new Error(`HTTP ${response.status} from ${path}`);
   return response.json() as Promise<T>;

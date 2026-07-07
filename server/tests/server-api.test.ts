@@ -37,6 +37,49 @@ describe('YapSkippr server API', () => {
     await app.close();
   });
 
+  test('protects the admin dashboard with an admin session cookie', async () => {
+    const app = await buildServer({ adminToken: 'secret' });
+
+    const unauthenticatedDashboard = await app.inject({ method: 'GET', url: '/admin' });
+    expect(unauthenticatedDashboard.statusCode).toBe(200);
+    expect(unauthenticatedDashboard.body).toContain('Admin access required');
+    expect(unauthenticatedDashboard.body).not.toContain('/admin/assets/');
+
+    const rejectedSession = await app.inject({
+      method: 'POST',
+      url: '/admin/session',
+      payload: { token: 'wrong' }
+    });
+    expect(rejectedSession.statusCode).toBe(401);
+
+    const acceptedSession = await app.inject({
+      method: 'POST',
+      url: '/admin/session',
+      payload: { token: 'secret' }
+    });
+    expect(acceptedSession.statusCode).toBe(200);
+    const cookie = acceptedSession.headers['set-cookie'];
+    expect(cookie).toEqual(expect.stringContaining('yapskippr_admin='));
+
+    const session = Array.isArray(cookie) ? cookie[0] : cookie;
+    const apiWithCookie = await app.inject({
+      method: 'GET',
+      url: '/admin/api/feedback',
+      headers: { cookie: session }
+    });
+    expect(apiWithCookie.statusCode).toBe(200);
+
+    const dashboardWithCookie = await app.inject({
+      method: 'GET',
+      url: '/admin',
+      headers: { cookie: session }
+    });
+    expect(dashboardWithCookie.statusCode).toBe(200);
+    expect(dashboardWithCookie.body).not.toContain('Admin access required');
+
+    await app.close();
+  });
+
   test('review, training, promotion, latest model, and rollback work end to end', async () => {
     const app = await buildServer({ adminToken: 'secret' });
 

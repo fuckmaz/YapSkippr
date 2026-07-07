@@ -147,7 +147,7 @@ The server package lives in `server/` and provides:
 - `POST /api/v1/feedback` for extension feedback payload v2.
 - `GET /api/v1/model/latest` for the currently promoted model artifact.
 - Admin-only review, training, promotion, rollback, and evaluation routes.
-- A React/Vite admin dashboard at `/admin`, protected at the API layer with `ADMIN_TOKEN`.
+- A React/Vite admin dashboard at `/admin`, protected by a server-side admin session created from `ADMIN_TOKEN`.
 - PostgreSQL persistence when `DATABASE_URL` is set, with an in-memory fallback for local development and tests.
 
 Local development:
@@ -162,7 +162,7 @@ Docker with Postgres:
 ADMIN_TOKEN=change-me docker compose up --build
 ```
 
-Then open `http://localhost:8787/admin`, enter the admin token, review submitted feedback, train a model, and promote it. Configure the extension popup feedback endpoint as:
+Then open `http://localhost:8787/admin`, enter the admin token, review submitted feedback, train a model, and promote it. The server sets an HTTP-only admin session cookie; admin APIs also accept `x-admin-token` for scripted workflows. Configure the extension popup feedback endpoint as:
 
 ```text
 http://localhost:8787/api/v1/feedback
