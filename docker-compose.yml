@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: yapskippr
+      POSTGRES_USER: yapskippr
+      POSTGRES_PASSWORD: yapskippr
+    volumes:
+      - yapskippr-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yapskippr -d yapskippr"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  server:
+    build:
+      context: ./server
+    environment:
+      PORT: 8787
+      HOST: 0.0.0.0
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-change-me-long-random-token}
+      DATABASE_URL: postgres://yapskippr:yapskippr@postgres:5432/yapskippr
+    ports:
+      - "8787:8787"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  yapskippr-postgres:

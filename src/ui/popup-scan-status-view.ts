@@ -10,6 +10,7 @@ export interface PopupScanStatusView {
   sampleCountText: string;
   candidateCountText: string;
   videoTimeText: string;
+  modelText: string;
   fastScanText: string;
   evidenceItems: PopupEvidenceItem[];
   candidates: PopupCandidateView[];
@@ -81,6 +82,7 @@ export function createPopupScanStatusView(
     sampleCountText: formatCount(status.sampleCount, 'frame'),
     candidateCountText: formatCount(status.candidateCount, 'candidate'),
     videoTimeText: formatVideoTime(status.videoCurrentTimeSeconds, status.videoDurationSeconds),
+    modelText: formatModelText(status),
     fastScanText: status.fastScanEnabled ? `Fast pre-scan on · ${status.fastScanIntervalSeconds}s interval` : 'Fast pre-scan off',
     evidenceItems: [
       { label: 'Transcript', value: String(status.evidenceCounts.transcript) },
@@ -91,7 +93,7 @@ export function createPopupScanStatusView(
     candidates: status.candidates.map((candidate) => ({
       id: candidate.id,
       summary: candidate.summary,
-      detail: `${Math.round(candidate.confidence * 100)}% confidence · ${candidate.sources.join(' + ') || 'unknown source'}`,
+      detail: formatCandidateDetail(candidate),
       seekSeconds: candidate.startSeconds,
       actionLabel: `Jump to ${formatTimestamp(candidate.startSeconds)}`
     })),
@@ -144,6 +146,21 @@ function formatAge(timestamp: number, now: number): string {
 function formatVideoTime(current: number | null, duration: number | null): string {
   if (current === null || duration === null) return 'No video timing';
   return `${formatTimestamp(current)} / ${formatTimestamp(duration)}`;
+}
+
+function formatModelText(status: ScanStatusSnapshot): string {
+  if (status.model.status !== 'loaded' || !status.model.modelId || !status.model.modelVersion) {
+    return 'Heuristic fallback';
+  }
+  return `${status.model.modelId} · ${status.model.modelVersion} · ${status.model.modelSource}`;
+}
+
+function formatCandidateDetail(candidate: ScanStatusSnapshot['candidates'][number]): string {
+  const sourceText = candidate.sources.join(' + ') || 'unknown source';
+  if (candidate.modelConfidence !== undefined && candidate.heuristicConfidence !== undefined) {
+    return `${Math.round(candidate.modelConfidence * 100)}% model · ${Math.round(candidate.heuristicConfidence * 100)}% heuristic · ${sourceText}`;
+  }
+  return `${Math.round(candidate.confidence * 100)}% confidence · ${sourceText}`;
 }
 
 function formatTimestamp(seconds: number): string {

@@ -1,7 +1,17 @@
-import type { EvidenceSource } from './types';
+import type { EvidenceKind, EvidenceSource } from './types';
 
 export type OccurrenceFeedbackValue = 'accurate' | 'false_positive' | 'wrong_timing' | 'missed_context';
 export type OccurrenceFeedbackType = 'candidate' | 'evidence';
+
+export interface OccurrenceFeedbackEvidenceSnapshot {
+  source: EvidenceSource | string;
+  kind: EvidenceKind | string;
+  startSeconds: number;
+  endSeconds?: number;
+  confidence: number;
+  reason: string;
+  detail?: string;
+}
 
 export interface OccurrenceFeedbackInput {
   videoUrl: string | null;
@@ -14,11 +24,20 @@ export interface OccurrenceFeedbackInput {
   reason?: string;
   feedback: OccurrenceFeedbackValue;
   notes?: string;
+  modelId?: string | null;
+  modelVersion?: string | null;
+  modelSource?: string;
+  featureSchemaVersion?: number;
+  heuristicConfidence?: number;
+  modelConfidence?: number;
+  candidateFeatures?: Record<string, number>;
+  evidenceSnapshot?: OccurrenceFeedbackEvidenceSnapshot[];
+  transcriptContext?: string;
 }
 
 export interface OccurrenceFeedbackPayload extends OccurrenceFeedbackInput {
   app: 'YapSkippr';
-  version: 1;
+  version: 2;
   createdAt: string;
 }
 
@@ -28,7 +47,7 @@ export function createOccurrenceFeedbackPayload(
 ): OccurrenceFeedbackPayload {
   return {
     app: 'YapSkippr',
-    version: 1,
+    version: 2,
     ...input,
     createdAt: new Date(now).toISOString()
   };

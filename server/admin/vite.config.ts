@@ -1,0 +1,15 @@
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  root: new URL('.', import.meta.url).pathname,
+  base: '/admin/',
+  plugins: [react()],
+  build: {
+    outDir: '../dist/admin',
+    emptyOutDir: true
+  },
+  server: {
+    port: 5174
+  }
+});

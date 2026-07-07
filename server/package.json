@@ -1,0 +1,36 @@
+{
+  "name": "@yapskippr/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "npm run build:admin && tsc -p tsconfig.json",
+    "build:admin": "vite build --config admin/vite.config.ts",
+    "migrate": "tsx src/db/migrate.ts",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "latest",
+    "@fastify/static": "latest",
+    "@vitejs/plugin-react": "latest",
+    "fastify": "latest",
+    "lucide-react": "latest",
+    "pg": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "vite": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/pg": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "tsx": "latest",
+    "typescript": "latest",
+    "vitest": "latest"
+  }
+}

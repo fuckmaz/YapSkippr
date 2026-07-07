@@ -14,6 +14,14 @@ test('formats a running scan snapshot for the popup', () => {
     videoDurationSeconds: 612,
     fastScanEnabled: true,
     fastScanIntervalSeconds: 2,
+    model: {
+      modelId: 'model-local-1',
+      modelVersion: '2026.07.07',
+      modelSource: 'downloaded',
+      featureSchemaVersion: 1,
+      status: 'loaded',
+      message: 'Promoted model loaded.'
+    },
     candidateCount: 2,
     evidenceCounts: {
       transcript: 3,
@@ -28,6 +36,12 @@ test('formats a running scan snapshot for the popup', () => {
         startSeconds: 72,
         endSeconds: 132,
         confidence: 0.86,
+        heuristicConfidence: 0.72,
+        modelConfidence: 0.86,
+        modelId: 'model-local-1',
+        modelVersion: '2026.07.07',
+        modelSource: 'downloaded',
+        featureSchemaVersion: 1,
         summary: '1:12-2:12 · 86% · transcript + QR',
         sources: ['transcript', 'QR']
       }
@@ -64,6 +78,7 @@ test('formats a running scan snapshot for the popup', () => {
     sampleCountText: '12 frames',
     candidateCountText: '2 candidates',
     videoTimeText: '1:33 / 10:12',
+    modelText: 'model-local-1 · 2026.07.07 · downloaded',
     evidenceItems: [
       { label: 'Transcript', value: '3' },
       { label: 'Progress', value: '2' },
@@ -75,7 +90,7 @@ test('formats a running scan snapshot for the popup', () => {
       {
         id: 'candidate-72',
         summary: '1:12-2:12 · 86% · transcript + QR',
-        detail: '86% confidence · transcript + QR',
+        detail: '86% model · 72% heuristic · transcript + QR',
         seekSeconds: 72,
         actionLabel: 'Jump to 1:12'
       }
@@ -119,6 +134,14 @@ test('formats idle scan state for the popup', () => {
     videoDurationSeconds: null,
     fastScanEnabled: false,
     fastScanIntervalSeconds: 2,
+    model: {
+      modelId: null,
+      modelVersion: null,
+      modelSource: 'fallback',
+      featureSchemaVersion: null,
+      status: 'fallback',
+      message: 'Heuristic confidence only.'
+    },
     candidateCount: 0,
     evidenceCounts: {
       transcript: 0,
@@ -140,6 +163,7 @@ test('formats idle scan state for the popup', () => {
     sampleCountText: '0 frames',
     candidateCountText: '0 candidates',
     videoTimeText: 'No video timing',
+    modelText: 'Heuristic fallback',
     fastScanText: 'Fast pre-scan off',
     candidates: [],
     events: [],
@@ -162,6 +186,14 @@ test('labels stale running scan state in the popup', () => {
     videoDurationSeconds: 200,
     fastScanEnabled: false,
     fastScanIntervalSeconds: 2,
+    model: {
+      modelId: null,
+      modelVersion: null,
+      modelSource: 'fallback',
+      featureSchemaVersion: null,
+      status: 'fallback',
+      message: 'Heuristic confidence only.'
+    },
     candidateCount: 0,
     evidenceCounts: {
       transcript: 0,

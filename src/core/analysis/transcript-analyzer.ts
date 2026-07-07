@@ -104,7 +104,12 @@ export function analyzeTranscriptCues(
         endSeconds: cue.startSeconds + cue.durationSeconds,
         confidence: match.group.confidence,
         reason: `${match.group.reasonLabel}: "${match.phrase}".`,
-        raw: cue
+        raw: {
+          ...cue,
+          phraseGroupId: match.group.id,
+          phrase: match.phrase,
+          contextText: normalized
+        }
       });
     }
   }

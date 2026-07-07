@@ -25,6 +25,7 @@ export interface ScanStatusSnapshot {
   videoDurationSeconds: number | null;
   fastScanEnabled: boolean;
   fastScanIntervalSeconds: number;
+  model: ScanStatusModelState;
   candidateCount: number;
   evidenceCounts: ScanEvidenceCounts;
   candidates: ScanStatusCandidate[];
@@ -41,13 +42,44 @@ export interface ScanEvidenceCounts {
   total: number;
 }
 
+export type ScanStatusModelSource = 'bundled' | 'downloaded' | 'fallback';
+export type ScanStatusModelStateValue = 'loaded' | 'fallback' | 'error';
+
+export interface ScanStatusModelState {
+  modelId: string | null;
+  modelVersion: string | null;
+  modelSource: ScanStatusModelSource;
+  featureSchemaVersion: number | null;
+  status: ScanStatusModelStateValue;
+  message: string;
+}
+
 export interface ScanStatusCandidate {
   id: string;
   startSeconds: number;
   endSeconds?: number;
   confidence: number;
+  heuristicConfidence?: number;
+  modelConfidence?: number;
+  modelId?: string | null;
+  modelVersion?: string | null;
+  modelSource?: ScanStatusModelSource;
+  featureSchemaVersion?: number;
+  candidateFeatures?: Record<string, number>;
+  evidenceSnapshot?: ScanStatusCandidateEvidence[];
+  transcriptContext?: string;
   summary: string;
   sources: string[];
+}
+
+export interface ScanStatusCandidateEvidence {
+  source: EvidenceSource;
+  kind: EvidenceKind;
+  startSeconds: number;
+  endSeconds?: number;
+  confidence: number;
+  reason: string;
+  detail?: string;
 }
 
 export interface ScanStatusEvidence {
@@ -100,6 +132,7 @@ export function createIdleScanStatus(now = Date.now()): ScanStatusSnapshot {
     videoDurationSeconds: null,
     fastScanEnabled: false,
     fastScanIntervalSeconds: 2,
+    model: createFallbackModelState(),
     candidateCount: 0,
     evidenceCounts: createEmptyEvidenceCounts(),
     candidates: [],
@@ -141,12 +174,24 @@ export function normalizeScanStatus(value: unknown, now = Date.now()): ScanStatu
     videoDurationSeconds: nullableNonNegativeNumber(value.videoDurationSeconds),
     fastScanEnabled: value.fastScanEnabled === true,
     fastScanIntervalSeconds: clamp(nonNegativeInteger(value.fastScanIntervalSeconds, 2), 1, 5),
+    model: normalizeModelState(value.model),
     candidateCount: nonNegativeInteger(value.candidateCount),
     evidenceCounts: normalizeEvidenceCounts(value.evidenceCounts),
     candidates: normalizeCandidates(value.candidates),
     recentEvidence: normalizeRecentEvidence(value.recentEvidence),
     recentEvents: normalizeEvents(value.recentEvents),
     updatedAt: nonNegativeInteger(value.updatedAt, now)
+  };
+}
+
+export function createFallbackModelState(message = 'Heuristic confidence only.'): ScanStatusModelState {
+  return {
+    modelId: null,
+    modelVersion: null,
+    modelSource: 'fallback',
+    featureSchemaVersion: null,
+    status: 'fallback',
+    message
   };
 }
 
@@ -255,6 +300,23 @@ function normalizeEvidenceCounts(value: unknown): ScanEvidenceCounts {
   };
 }
 
+function normalizeModelState(value: unknown): ScanStatusModelState {
+  if (!isRecord(value)) return createFallbackModelState();
+
+  const modelSource = isModelSource(value.modelSource) ? value.modelSource : 'fallback';
+  const status = isModelStateValue(value.status) ? value.status : modelSource === 'fallback' ? 'fallback' : 'loaded';
+  const message = nullableString(value.message) ?? (status === 'loaded' ? 'Model loaded.' : 'Heuristic confidence only.');
+
+  return {
+    modelId: nullableString(value.modelId),
+    modelVersion: nullableString(value.modelVersion),
+    modelSource,
+    featureSchemaVersion: nullableNonNegativeNumber(value.featureSchemaVersion),
+    status,
+    message
+  };
+}
+
 function normalizeCandidates(value: unknown): ScanStatusCandidate[] {
   if (!Array.isArray(value)) return [];
 
@@ -269,21 +331,73 @@ function normalizeCandidates(value: unknown): ScanStatusCandidate[] {
 
     if (!id || !summary || startSeconds === null || confidence === null) return [];
 
+    const normalizedCandidate: ScanStatusCandidate = {
+      id,
+      startSeconds,
+      ...(nullableNonNegativeNumber(candidate.endSeconds) !== null
+        ? { endSeconds: nullableNonNegativeNumber(candidate.endSeconds) as number }
+        : {}),
+      confidence,
+      ...(nullableProbability(candidate.heuristicConfidence) !== null
+        ? { heuristicConfidence: nullableProbability(candidate.heuristicConfidence) as number }
+        : {}),
+      ...(nullableProbability(candidate.modelConfidence) !== null
+        ? { modelConfidence: nullableProbability(candidate.modelConfidence) as number }
+        : {}),
+      ...(candidate.modelId === null || nullableString(candidate.modelId) !== null
+        ? { modelId: nullableString(candidate.modelId) }
+        : {}),
+      ...(candidate.modelVersion === null || nullableString(candidate.modelVersion) !== null
+        ? { modelVersion: nullableString(candidate.modelVersion) }
+        : {}),
+      ...(isModelSource(candidate.modelSource) ? { modelSource: candidate.modelSource } : {}),
+      ...(nullableNonNegativeNumber(candidate.featureSchemaVersion) !== null
+        ? { featureSchemaVersion: nullableNonNegativeNumber(candidate.featureSchemaVersion) as number }
+        : {}),
+      ...(normalizeNumberRecord(candidate.candidateFeatures) ? { candidateFeatures: normalizeNumberRecord(candidate.candidateFeatures) as Record<string, number> } : {}),
+      ...(normalizeCandidateEvidence(candidate.evidenceSnapshot).length > 0
+        ? { evidenceSnapshot: normalizeCandidateEvidence(candidate.evidenceSnapshot) }
+        : {}),
+      ...(nullableString(candidate.transcriptContext) ? { transcriptContext: nullableString(candidate.transcriptContext) as string } : {}),
+      summary,
+      sources: Array.isArray(candidate.sources)
+        ? candidate.sources.filter((source): source is string => typeof source === 'string' && source.length > 0)
+        : []
+    };
+
+    return [normalizedCandidate];
+  }).slice(0, 5);
+}
+
+function normalizeCandidateEvidence(value: unknown): ScanStatusCandidateEvidence[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((evidence): ScanStatusCandidateEvidence[] => {
+    if (!isRecord(evidence)) return [];
+    const source = evidence.source;
+    const kind = evidence.kind;
+    const startSeconds = nullableNonNegativeNumber(evidence.startSeconds);
+    const confidence = nullableProbability(evidence.confidence);
+    const reason = nullableString(evidence.reason);
+
+    if (!isEvidenceSource(source) || !isEvidenceKind(kind) || startSeconds === null || confidence === null || !reason) {
+      return [];
+    }
+
     return [
       {
-        id,
+        source,
+        kind,
         startSeconds,
-        ...(nullableNonNegativeNumber(candidate.endSeconds) !== null
-          ? { endSeconds: nullableNonNegativeNumber(candidate.endSeconds) as number }
+        ...(nullableNonNegativeNumber(evidence.endSeconds) !== null
+          ? { endSeconds: nullableNonNegativeNumber(evidence.endSeconds) as number }
           : {}),
         confidence,
-        summary,
-        sources: Array.isArray(candidate.sources)
-          ? candidate.sources.filter((source): source is string => typeof source === 'string' && source.length > 0)
-          : []
+        reason,
+        ...(nullableString(evidence.detail) ? { detail: nullableString(evidence.detail) as string } : {})
       }
     ];
-  }).slice(0, 5);
+  });
 }
 
 function normalizeRecentEvidence(value: unknown): ScanStatusEvidence[] {
@@ -345,8 +459,30 @@ function normalizeEvents(value: unknown): ScanStatusEvent[] {
   }).slice(0, 16);
 }
 
+function normalizeNumberRecord(value: unknown): Record<string, number> | null {
+  if (!isRecord(value)) return null;
+  const entries = Object.entries(value).filter((entry): entry is [string, number] => (
+    typeof entry[0] === 'string' &&
+    typeof entry[1] === 'number' &&
+    Number.isFinite(entry[1])
+  ));
+  return entries.length > 0 ? Object.fromEntries(entries) : null;
+}
+
 function isEventLevel(value: unknown): value is ScanStatusEventLevel {
   return value === 'info' || value === 'warn' || value === 'error';
+}
+
+function isModelSource(value: unknown): value is ScanStatusModelSource {
+  return value === 'bundled' || value === 'downloaded' || value === 'fallback';
+}
+
+function isModelStateValue(value: unknown): value is ScanStatusModelStateValue {
+  return value === 'loaded' || value === 'fallback' || value === 'error';
+}
+
+function nullableProbability(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? clamp(value, 0, 1) : null;
 }
 
 function toScanStatusEvidence(evidence: TimedEvidence, timestamp: number, index: number): ScanStatusEvidence {

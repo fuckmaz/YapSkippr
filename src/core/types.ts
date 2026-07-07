@@ -17,6 +17,15 @@ export interface SegmentCandidate {
   endSeconds?: number;
   confidence: number;
   evidence: TimedEvidence[];
+  heuristicConfidence?: number;
+  modelConfidence?: number;
+  modelId?: string | null;
+  modelVersion?: string | null;
+  modelSource?: 'bundled' | 'downloaded' | 'fallback';
+  featureSchemaVersion?: number;
+  candidateFeatures?: Record<string, number>;
+  phraseGroupIds?: string[];
+  transcriptContext?: string;
 }
 
 export interface TranscriptCue {

@@ -1,13 +1,13 @@
 import './style.css';
+import { FEEDBACK_ENDPOINT_STORAGE_KEY } from '../../core/extension-settings';
 import { createOccurrenceFeedbackPayload, normalizeFeedbackEndpoint, type OccurrenceFeedbackValue, type OccurrenceFeedbackType } from '../../core/feedback';
-import { createIdleScanStatus, type ScanStatusSnapshot } from '../../core/scan-status';
+import { createIdleScanStatus, type ScanStatusEvidence, type ScanStatusSnapshot } from '../../core/scan-status';
 import { readStoredScanStatus, subscribeToStoredScanStatus } from '../../core/scan-status-storage';
 import { createPopupScanStatusView } from '../../ui/popup-scan-status-view';
 
 const frameCaptureOrigins = ['<all_urls>'];
 const seekToMessageType = 'YAPSKIPPR_SEEK_TO';
 const fastScanMessageType = 'YAPSKIPPR_SET_FAST_SCAN';
-const feedbackEndpointStorageKey = 'yapskippr.feedbackEndpoint';
 const status = document.querySelector('#status');
 const basicModeToggle = document.querySelector<HTMLButtonElement>('#basic-mode-toggle');
 const detailedModeToggle = document.querySelector<HTMLButtonElement>('#detailed-mode-toggle');
@@ -35,6 +35,10 @@ const developerPanel = document.querySelector<HTMLElement>('#developer-panel');
 const detailVideoId = document.querySelector('#detail-video-id');
 const detailPageUrl = document.querySelector('#detail-page-url');
 const detailTotalEvidence = document.querySelector('#detail-total-evidence');
+const detailModel = document.querySelector('#detail-model');
+const detailModelSource = document.querySelector('#detail-model-source');
+const detailModelSchema = document.querySelector('#detail-model-schema');
+const detailModelMessage = document.querySelector('#detail-model-message');
 const detailUpdated = document.querySelector('#detail-updated');
 const feedbackEndpointInput = document.querySelector<HTMLInputElement>('#feedback-endpoint');
 const saveFeedbackEndpointButton = document.querySelector<HTMLButtonElement>('#save-feedback-endpoint');
@@ -180,6 +184,10 @@ function renderScanStatus(statusSnapshot = createIdleScanStatus()): void {
   detailVideoId?.replaceChildren(document.createTextNode(statusSnapshot.videoId ?? '-'));
   detailPageUrl?.replaceChildren(document.createTextNode(statusSnapshot.pageUrl ?? '-'));
   detailTotalEvidence?.replaceChildren(document.createTextNode(String(statusSnapshot.evidenceCounts.total)));
+  detailModel?.replaceChildren(document.createTextNode(view.modelText));
+  detailModelSource?.replaceChildren(document.createTextNode(statusSnapshot.model.modelSource));
+  detailModelSchema?.replaceChildren(document.createTextNode(statusSnapshot.model.featureSchemaVersion === null ? '-' : String(statusSnapshot.model.featureSchemaVersion)));
+  detailModelMessage?.replaceChildren(document.createTextNode(statusSnapshot.model.message));
   detailUpdated?.replaceChildren(document.createTextNode(view.updatedText));
   scanEvidenceEvents?.replaceChildren(
     ...view.evidenceEvents.map((evidence) => {
@@ -333,7 +341,7 @@ function setDetailedMode(enabled: boolean): void {
 
 async function loadFeedbackEndpoint(): Promise<void> {
   try {
-    const value = await getLocalStorageValue(feedbackEndpointStorageKey);
+    const value = await getLocalStorageValue(FEEDBACK_ENDPOINT_STORAGE_KEY);
     feedbackEndpoint = typeof value === 'string' ? normalizeFeedbackEndpoint(value) : null;
     if (feedbackEndpointInput && feedbackEndpoint) feedbackEndpointInput.value = feedbackEndpoint;
     setFeedbackStatus(feedbackEndpoint ? 'Feedback endpoint ready.' : 'Feedback is local until an endpoint is saved.');
@@ -347,13 +355,13 @@ async function saveFeedbackEndpoint(): Promise<void> {
   const normalized = normalizeFeedbackEndpoint(feedbackEndpointInput?.value ?? '');
   if (!normalized) {
     feedbackEndpoint = null;
-    await setLocalStorageValue(feedbackEndpointStorageKey, '');
+    await setLocalStorageValue(FEEDBACK_ENDPOINT_STORAGE_KEY, '');
     setFeedbackStatus('Enter an http(s) feedback endpoint before sending reports.');
     return;
   }
 
   feedbackEndpoint = normalized;
-  await setLocalStorageValue(feedbackEndpointStorageKey, normalized);
+  await setLocalStorageValue(FEEDBACK_ENDPOINT_STORAGE_KEY, normalized);
   setFeedbackStatus('Feedback endpoint saved.');
 }
 
@@ -385,7 +393,8 @@ async function sendFeedbackForButton(button: HTMLButtonElement): Promise<void> {
       startSeconds,
       summary: button.dataset.summary ?? 'YapSkippr occurrence',
       reason: button.dataset.reason,
-      feedback
+      feedback,
+      ...getFeedbackContext(button.dataset.occurrenceId ?? 'unknown', occurrenceType)
     });
     const response = await fetch(feedbackEndpoint, {
       method: 'POST',
@@ -403,6 +412,44 @@ async function sendFeedbackForButton(button: HTMLButtonElement): Promise<void> {
   } finally {
     button.disabled = false;
   }
+}
+
+function getFeedbackContext(
+  occurrenceId: string,
+  occurrenceType: OccurrenceFeedbackType
+): Partial<Parameters<typeof createOccurrenceFeedbackPayload>[0]> {
+  const candidate = occurrenceType === 'candidate'
+    ? currentScanStatus.candidates.find((item) => item.id === occurrenceId)
+    : undefined;
+  const evidence = occurrenceType === 'evidence'
+    ? currentScanStatus.recentEvidence.find((item) => item.id === occurrenceId)
+    : undefined;
+
+  return {
+    modelId: candidate?.modelId ?? currentScanStatus.model.modelId,
+    modelVersion: candidate?.modelVersion ?? currentScanStatus.model.modelVersion,
+    modelSource: candidate?.modelSource ?? currentScanStatus.model.modelSource,
+    featureSchemaVersion: candidate?.featureSchemaVersion ?? currentScanStatus.model.featureSchemaVersion ?? undefined,
+    heuristicConfidence: candidate?.heuristicConfidence,
+    modelConfidence: candidate?.modelConfidence,
+    candidateFeatures: candidate?.candidateFeatures,
+    evidenceSnapshot: candidate?.evidenceSnapshot ?? (evidence ? [toFeedbackEvidenceSnapshot(evidence)] : undefined),
+    transcriptContext: candidate?.transcriptContext
+  };
+}
+
+function toFeedbackEvidenceSnapshot(
+  evidence: ScanStatusEvidence
+): NonNullable<ReturnType<typeof getFeedbackContext>['evidenceSnapshot']>[number] {
+  return {
+    source: evidence.source,
+    kind: evidence.kind,
+    startSeconds: evidence.startSeconds,
+    ...(evidence.endSeconds === undefined ? {} : { endSeconds: evidence.endSeconds }),
+    confidence: evidence.confidence,
+    reason: evidence.reason,
+    ...(evidence.detail ? { detail: evidence.detail } : {})
+  };
 }
 
 function createFeedbackButtons(input: {

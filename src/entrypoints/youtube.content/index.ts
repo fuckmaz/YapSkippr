@@ -10,19 +10,30 @@ import {
 } from '../../core/analysis/frame-sampler';
 import { detectVisibleLinkCue, isVisibleTextDetectionAvailable } from '../../core/analysis/link-detector';
 import { analyzeTranscriptCues } from '../../core/analysis/transcript-analyzer';
+import { FEEDBACK_ENDPOINT_STORAGE_KEY, MODEL_CACHE_STORAGE_KEY } from '../../core/extension-settings';
+import { normalizeFeedbackEndpoint } from '../../core/feedback';
+import {
+  applyModelToCandidates,
+  validateCandidateModel,
+  type CandidateModelArtifact,
+  type CandidateModelSource
+} from '../../core/model/candidate-model';
 import {
   appendScanStatusEvidence,
   appendScanStatusEvent,
   createIdleScanStatus,
   createEmptyEvidenceCounts,
+  createFallbackModelState,
   mergeScanStatus,
   type ScanEvidenceCounts,
   type ScanStatusCandidate,
+  type ScanStatusCandidateEvidence,
+  type ScanStatusModelState,
   type ScanStatusPatch,
   type ScanStatusPhase
 } from '../../core/scan-status';
 import { writeStoredScanStatus } from '../../core/scan-status-storage';
-import type { EvidenceSource, SegmentCandidate, TimedEvidence } from '../../core/types';
+import type { EvidenceSource, SegmentCandidate, TimedEvidence, TranscriptCue } from '../../core/types';
 import { createYouTubeAdapter } from '../../platform/youtube/youtube-adapter';
 import { observeLocationChanges } from '../../platform/youtube/route-observer';
 import { formatCandidateSummary } from '../../ui/candidate-summary';
@@ -60,6 +71,12 @@ interface FastScanResponse {
 interface ActiveScanControl {
   stop(): void;
   setFastScan(enabled: boolean, intervalSeconds: number): FastScanResponse;
+}
+
+interface ActiveCandidateModelState {
+  model: CandidateModelArtifact | null;
+  modelSource: CandidateModelSource;
+  status: ScanStatusModelState;
 }
 
 export default defineContentScript({
@@ -134,6 +151,8 @@ export default defineContentScript({
 async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAdapter>): Promise<ActiveScanControl> {
   const statusUi = await adapter.mountStatusUi();
   const evidence: TimedEvidence[] = [];
+  let transcriptCues: TranscriptCue[] = [];
+  let activeCandidateModel = createFallbackActiveCandidateModel('No recognition model loaded yet.');
   let stopped = false;
   let sampleCount = 0;
   let lastCandidateCount = 0;
@@ -148,7 +167,8 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
     phase: 'starting',
     message: 'Starting YapSkippr scan...',
     fastScanEnabled,
-    fastScanIntervalSeconds
+    fastScanIntervalSeconds,
+    model: activeCandidateModel.status
   });
 
   function publishScanStatus(
@@ -240,6 +260,18 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
     fastScanEnabled,
     fastScanIntervalSeconds
   });
+
+  setScanProgress('Loading active recognition model...', 0.12, 'starting');
+  activeCandidateModel = await loadActiveCandidateModel();
+  publishScanStatus(
+    { model: activeCandidateModel.status },
+    {
+      level: activeCandidateModel.status.status === 'error' ? 'warn' : 'info',
+      message: activeCandidateModel.status.status === 'loaded' ? 'Recognition model loaded' : 'Recognition model fallback',
+      detail: activeCandidateModel.status.message
+    }
+  );
+
   if (!isVisibleTextDetectionAvailable()) {
     publishScanStatus(
       {},
@@ -256,11 +288,12 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
     .loadTranscript()
     .then((cues) => {
       if (stopped) return;
+      transcriptCues = cues;
       const transcriptEvidence = analyzeTranscriptCues(cues);
       evidence.push(...transcriptEvidence);
       logger.info('transcript analyzed', { cues: cues.length, evidence: transcriptEvidence.length });
       publishEvidence(transcriptEvidence);
-      publishCandidates(updateCandidates(evidence, statusUi));
+      publishCandidates(updateCandidates(evidence, statusUi, activeCandidateModel, getFiniteDuration(playableVideo), transcriptCues));
       setScanProgress(
         'Analyzing visible video frames...',
         0.35,
@@ -307,15 +340,15 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
           frameEvidence.push(...(await detectQrCue(frame.imageData, frame.currentTimeSeconds)));
         }
         frameEvidence.push(...(await detectVisibleLinkCue(frame.imageData, frame.currentTimeSeconds)));
+        const durationSeconds = getFiniteDuration(playableVideo);
 
         if (frameEvidence.length > 0) {
           evidence.push(...frameEvidence);
           logger.info('frame evidence detected', frameEvidence);
           publishEvidence(frameEvidence);
-          publishCandidates(updateCandidates(evidence, statusUi));
+          publishCandidates(updateCandidates(evidence, statusUi, activeCandidateModel, durationSeconds, transcriptCues));
         }
 
-        const durationSeconds = getFiniteDuration(playableVideo);
         if (publishCompletionIfReady(frame.currentTimeSeconds, durationSeconds)) return;
 
         setScanProgress(`Analyzing frames... ${sampleCount} sampled`, calculateFrameScanProgress({
@@ -441,9 +474,17 @@ async function waitForVideo(adapter: ReturnType<typeof createYouTubeAdapter>, ti
 
 function updateCandidates(
   evidence: TimedEvidence[],
-  statusUi: { setCandidates(candidates: ReturnType<typeof buildSegmentCandidates>): void }
+  statusUi: { setCandidates(candidates: ReturnType<typeof buildSegmentCandidates>): void },
+  activeModel: ActiveCandidateModelState,
+  videoDurationSeconds: number | null,
+  transcriptCues: readonly TranscriptCue[]
 ): ReturnType<typeof buildSegmentCandidates> {
-  const candidates = buildSegmentCandidates(evidence);
+  const candidates = applyModelToCandidates(buildSegmentCandidates(evidence), {
+    model: activeModel.model,
+    modelSource: activeModel.modelSource,
+    videoDurationSeconds,
+    getTranscriptContext: (candidate) => getTranscriptContext(transcriptCues, candidate)
+  });
   statusUi.setCandidates(candidates);
   logger.info('segment candidates updated', candidates);
   return candidates;
@@ -455,8 +496,29 @@ function toScanStatusCandidate(candidate: SegmentCandidate): ScanStatusCandidate
     startSeconds: candidate.startSeconds,
     ...(candidate.endSeconds === undefined ? {} : { endSeconds: candidate.endSeconds }),
     confidence: candidate.confidence,
+    ...(candidate.heuristicConfidence === undefined ? {} : { heuristicConfidence: candidate.heuristicConfidence }),
+    ...(candidate.modelConfidence === undefined ? {} : { modelConfidence: candidate.modelConfidence }),
+    modelId: candidate.modelId ?? null,
+    modelVersion: candidate.modelVersion ?? null,
+    ...(candidate.modelSource === undefined ? {} : { modelSource: candidate.modelSource }),
+    ...(candidate.featureSchemaVersion === undefined ? {} : { featureSchemaVersion: candidate.featureSchemaVersion }),
+    ...(candidate.candidateFeatures === undefined ? {} : { candidateFeatures: candidate.candidateFeatures }),
+    evidenceSnapshot: candidate.evidence.map(toCandidateEvidenceSnapshot),
+    ...(candidate.transcriptContext ? { transcriptContext: candidate.transcriptContext } : {}),
     summary: formatCandidateSummary(candidate),
     sources: getCandidateSourceLabels(candidate)
+  };
+}
+
+function toCandidateEvidenceSnapshot(evidence: TimedEvidence): ScanStatusCandidateEvidence {
+  return {
+    source: evidence.source,
+    kind: evidence.kind,
+    startSeconds: evidence.startSeconds,
+    ...(evidence.endSeconds === undefined ? {} : { endSeconds: evidence.endSeconds }),
+    confidence: evidence.confidence,
+    reason: evidence.reason,
+    ...(summarizeRawEvidence(evidence.raw) ? { detail: summarizeRawEvidence(evidence.raw) as string } : {})
   };
 }
 
@@ -483,6 +545,147 @@ function formatEvidenceSource(source: EvidenceSource): string {
   if (source === 'frame-qr-code') return 'QR';
   if (source === 'frame-visible-link') return 'visible link';
   return 'progress bar';
+}
+
+function getTranscriptContext(cues: readonly TranscriptCue[], candidate: SegmentCandidate, windowSeconds = 20): string {
+  if (cues.length === 0) return '';
+  const startSeconds = Math.max(0, candidate.startSeconds - windowSeconds);
+  const endSeconds = (candidate.endSeconds ?? candidate.startSeconds) + windowSeconds;
+
+  return cues
+    .filter((cue) => cue.startSeconds + cue.durationSeconds >= startSeconds && cue.startSeconds <= endSeconds)
+    .map((cue) => cue.text)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function loadActiveCandidateModel(): Promise<ActiveCandidateModelState> {
+  const cachedModel = validateCandidateModel(await getLocalStorageValue(MODEL_CACHE_STORAGE_KEY));
+  const feedbackEndpoint = normalizeStoredFeedbackEndpoint(await getLocalStorageValue(FEEDBACK_ENDPOINT_STORAGE_KEY));
+
+  if (!feedbackEndpoint) {
+    if (cachedModel) {
+      return createLoadedModelState(cachedModel, 'downloaded', 'Using cached promoted model. No feedback endpoint is configured.');
+    }
+    return createFallbackActiveCandidateModel('No feedback endpoint configured; using heuristic confidence.');
+  }
+
+  try {
+    const response = await fetch(deriveModelEndpoint(feedbackEndpoint), {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+      cache: 'no-store',
+      credentials: 'omit'
+    });
+    if (!response.ok) throw new Error(`Model endpoint returned HTTP ${response.status}.`);
+
+    const model = validateCandidateModel(await response.json());
+    if (!model) throw new Error('Model artifact is missing required fields or uses an incompatible feature schema.');
+
+    await setLocalStorageValue(MODEL_CACHE_STORAGE_KEY, model);
+    return createLoadedModelState(model, 'downloaded', 'Promoted model loaded from the feedback server.');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (cachedModel) {
+      return createLoadedModelState(cachedModel, 'downloaded', `Using cached promoted model. Latest fetch failed: ${message}`);
+    }
+    return {
+      model: null,
+      modelSource: 'fallback',
+      status: {
+        ...createFallbackModelState(`Model unavailable: ${message}`),
+        status: 'error'
+      }
+    };
+  }
+}
+
+function createLoadedModelState(
+  model: CandidateModelArtifact,
+  modelSource: CandidateModelSource,
+  message: string
+): ActiveCandidateModelState {
+  return {
+    model,
+    modelSource,
+    status: {
+      modelId: model.modelId,
+      modelVersion: model.modelVersion,
+      modelSource,
+      featureSchemaVersion: model.featureSchemaVersion,
+      status: 'loaded',
+      message
+    }
+  };
+}
+
+function createFallbackActiveCandidateModel(message: string): ActiveCandidateModelState {
+  return {
+    model: null,
+    modelSource: 'fallback',
+    status: createFallbackModelState(message)
+  };
+}
+
+function normalizeStoredFeedbackEndpoint(value: unknown): string | null {
+  return typeof value === 'string' ? normalizeFeedbackEndpoint(value) : null;
+}
+
+function deriveModelEndpoint(feedbackEndpoint: string): string {
+  const url = new URL(feedbackEndpoint);
+  if (/\/feedback\/?$/.test(url.pathname)) {
+    url.pathname = url.pathname.replace(/\/feedback\/?$/, '/model/latest');
+  } else {
+    url.pathname = '/api/v1/model/latest';
+  }
+  url.search = '';
+  url.hash = '';
+  return url.toString();
+}
+
+function getLocalStorageValue(key: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get(key, (items) => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(new Error(error.message));
+        return;
+      }
+      resolve(items[key]);
+    });
+  });
+}
+
+function setLocalStorageValue(key: string, value: unknown): Promise<void> {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.set({ [key]: value }, () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(new Error(error.message));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function summarizeRawEvidence(raw: unknown): string | null {
+  if (!isRecord(raw)) return null;
+
+  if (Array.isArray(raw.links)) {
+    const links = raw.links.filter((link): link is string => typeof link === 'string' && link.length > 0);
+    if (links.length > 0) return links.join(', ');
+  }
+
+  if (typeof raw.value === 'string' && raw.value.trim()) return raw.value.trim();
+  if (typeof raw.text === 'string' && raw.text.trim()) return raw.text.trim();
+  if (typeof raw.contextText === 'string' && raw.contextText.trim()) return raw.contextText.trim();
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function getFiniteDuration(video: HTMLVideoElement): number | null {

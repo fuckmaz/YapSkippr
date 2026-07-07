@@ -11,7 +11,7 @@
 <p align="center">
   <img alt="Chrome MV3" src="https://img.shields.io/badge/Chrome%20%2F%20Chromium-MV3-1f6feb">
   <img alt="Firefox MV2" src="https://img.shields.io/badge/Firefox-MV2-ff7139">
-  <img alt="Status" src="https://img.shields.io/badge/status-v1%20detection--only-2da44e">
+  <img alt="Status" src="https://img.shields.io/badge/status-feedback--trained%20v1-2da44e">
   <img alt="Privacy" src="https://img.shields.io/badge/privacy-local--first-6f42c1">
 </p>
 
@@ -19,9 +19,11 @@
 
 ## Overview
 
-YapSkippr analyzes the YouTube video you are currently watching and surfaces candidate ad-read segments. V1 is intentionally detection-only: it finds likely sponsorship windows, logs progress, and gives you jump actions, but it does not auto-skip or modify playback on its own.
+YapSkippr analyzes the YouTube video you are currently watching and surfaces candidate ad-read segments. V1 remains detection-only: it finds likely sponsorship windows, logs progress, gives you jump actions, and accepts feedback, but it does not auto-skip or modify playback on its own.
 
 The extension combines frame analysis and transcript signals so future versions can evolve toward more accurate, service-aware ad-read detection without tying the core logic to YouTube forever.
+
+YapSkippr now also includes a self-improving, non-LLM recognition loop. The extension still generates evidence with deterministic detectors, then optionally applies a promoted JSON logistic model fetched from your own server. Admin-reviewed feedback produces training examples; trained models are promoted manually before browser clients use them.
 
 ## What It Detects
 
@@ -42,6 +44,8 @@ When evidence is found, YapSkippr fuses the signals into candidate segments and 
 - Candidate jump actions for quickly seeking to detected segment start times.
 - Lightweight status block mounted near the YouTube player with evidence counts and clickable candidate timecodes.
 - Console logging for lower-level debugging while the detector is still evolving.
+- Optional feedback API integration with v2 payloads that include candidate features, evidence snapshots, transcript context, and model metadata.
+- Admin-only server dashboard for reviewing feedback, training models, inspecting metrics, and promoting or rolling back model artifacts.
 - Chrome and Chromium support first, with a Firefox build available for local testing.
 
 ## How It Works
@@ -53,7 +57,9 @@ YouTube page
   -> frame sampler captures visible video frames
   -> detectors extract transcript, progress-bar, QR, and visible-link evidence
   -> evidence fusion creates candidate ad-read segments
+  -> optional promoted model recalibrates candidate confidence
   -> popup and page UI receive live status snapshots from extension storage
+  -> reviewed feedback trains the next JSON model artifact on your server
 ```
 
 The code is split so new streaming services can be added through platform adapters instead of rewriting the detection pipeline.
@@ -120,6 +126,8 @@ Run checks:
 npm test
 npm run typecheck
 npm run test:e2e
+npm run test:server
+npm run typecheck:server
 ```
 
 ### Transcript Phrase Tuning
@@ -132,15 +140,42 @@ Transcript ad-read cues are configured in `DEFAULT_TRANSCRIPT_PHRASE_GROUPS` ins
 
 Supplying a custom `phraseGroups` list to `analyzeTranscriptCues()` replaces the defaults, which keeps future developer-mode UI or stored settings straightforward.
 
-### Feedback Server Plan
+## Feedback Server And Admin Dashboard
 
-The extension can send candidate/evidence feedback from detailed popup mode once a feedback API endpoint is configured. The backend/admin dashboard implementation plan is documented in `docs/superpowers/plans/2026-07-07-yapskippr-feedback-api-admin-dashboard.md`.
+The server package lives in `server/` and provides:
+
+- `POST /api/v1/feedback` for extension feedback payload v2.
+- `GET /api/v1/model/latest` for the currently promoted model artifact.
+- Admin-only review, training, promotion, rollback, and evaluation routes.
+- A React/Vite admin dashboard at `/admin`, protected at the API layer with `ADMIN_TOKEN`.
+- PostgreSQL persistence when `DATABASE_URL` is set, with an in-memory fallback for local development and tests.
+
+Local development:
+
+```bash
+npm run server:dev
+```
+
+Docker with Postgres:
+
+```bash
+ADMIN_TOKEN=change-me docker compose up --build
+```
+
+Then open `http://localhost:8787/admin`, enter the admin token, review submitted feedback, train a model, and promote it. Configure the extension popup feedback endpoint as:
+
+```text
+http://localhost:8787/api/v1/feedback
+```
+
+The content script derives `GET /api/v1/model/latest` from that endpoint, validates the model schema, caches compatible models, and falls back to heuristic confidence if the server is unavailable.
 
 ## Project Structure
 
 ```text
 src/
   core/analysis/        Detector logic for frames, QR codes, links, transcripts, and fusion.
+  core/model/           Candidate feature extraction and JSON logistic model scoring.
   core/scan-status.ts   Shared scan status model used by the page UI and popup.
   entrypoints/          WXT extension entrypoints for background, popup, and YouTube content script.
   platform/youtube/     YouTube-specific routing, metadata, and transcript integration.
@@ -150,11 +185,15 @@ tests/
   e2e/                  Build-output smoke coverage.
 scripts/
   build-installable.mjs Local packaging helper for Chrome and Firefox artifacts.
+server/
+  src/                  Fastify API, storage adapters, migrations, and trainer.
+  admin/                React/Vite admin dashboard.
+  tests/                Server API and trainer coverage.
 ```
 
 ## Privacy And Permissions
 
-YapSkippr is local-first. Frame samples, transcript cues, and detection results stay inside your browser. The extension has no backend and does not upload video data.
+YapSkippr is local-first by default. Frame samples and video screenshots are not uploaded. If you configure the feedback endpoint, the extension sends structured feedback payloads containing the video URL, timecode, occurrence summary, candidate features, evidence metadata, transcript context, and model metadata.
 
 The extension declares broad `<all_urls>` host access because browser APIs require either `<all_urls>` or `activeTab` for automatic `tabs.captureVisibleTab()` frame sampling. The content script itself is scoped to YouTube pages, and captured frames are processed locally.
 
@@ -169,8 +208,8 @@ If Chrome reports `Either the '<all_urls>' or 'activeTab' permission is required
 
 ## Roadmap
 
-- Improve candidate scoring with more real-world sample videos.
+- Improve candidate scoring with reviewed feedback from more real-world sample videos.
 - Add richer on-player visualization for candidate windows.
 - Add optional skip controls once detection quality is high enough.
 - Introduce more platform adapters for additional streaming services.
-- Add persisted scan history and user feedback controls for tuning detection.
+- Expand model training beyond candidate ranking into boundary-specific timing improvements.

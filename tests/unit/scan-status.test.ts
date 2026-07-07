@@ -24,6 +24,14 @@ test('merges scan status patches for popup subscribers', () => {
       fastScanEnabled: true,
       fastScanIntervalSeconds: 2,
       candidateCount: 2,
+      model: {
+        modelId: 'model-local-1',
+        modelVersion: '2026.07.07',
+        modelSource: 'downloaded',
+        featureSchemaVersion: 1,
+        status: 'loaded',
+        message: 'Promoted model loaded.'
+      },
       evidenceCounts: {
         transcript: 3,
         progressBar: 2,
@@ -37,6 +45,26 @@ test('merges scan status patches for popup subscribers', () => {
           startSeconds: 72,
           endSeconds: 132,
           confidence: 0.86,
+          heuristicConfidence: 0.72,
+          modelConfidence: 0.86,
+          modelId: 'model-local-1',
+          modelVersion: '2026.07.07',
+          modelSource: 'downloaded',
+          featureSchemaVersion: 1,
+          candidateFeatures: {
+            heuristicConfidence: 0.72,
+            transcriptStartCount: 1
+          },
+          evidenceSnapshot: [
+            {
+              source: 'transcript',
+              kind: 'ad-read-start',
+              startSeconds: 72,
+              confidence: 0.85,
+              reason: 'Transcript sponsor start cue: "sponsored by".'
+            }
+          ],
+          transcriptContext: 'This video is sponsored by Acme.',
           summary: '1:12-2:12 · 86% · transcript + QR',
           sources: ['transcript', 'QR']
         }
@@ -65,6 +93,14 @@ test('merges scan status patches for popup subscribers', () => {
     videoDurationSeconds: 612,
     fastScanEnabled: true,
     fastScanIntervalSeconds: 2,
+    model: {
+      modelId: 'model-local-1',
+      modelVersion: '2026.07.07',
+      modelSource: 'downloaded',
+      featureSchemaVersion: 1,
+      status: 'loaded',
+      message: 'Promoted model loaded.'
+    },
     candidateCount: 2,
     evidenceCounts: {
       transcript: 3,
@@ -79,6 +115,26 @@ test('merges scan status patches for popup subscribers', () => {
         startSeconds: 72,
         endSeconds: 132,
         confidence: 0.86,
+        heuristicConfidence: 0.72,
+        modelConfidence: 0.86,
+        modelId: 'model-local-1',
+        modelVersion: '2026.07.07',
+        modelSource: 'downloaded',
+        featureSchemaVersion: 1,
+        candidateFeatures: {
+          heuristicConfidence: 0.72,
+          transcriptStartCount: 1
+        },
+        evidenceSnapshot: [
+          {
+            source: 'transcript',
+            kind: 'ad-read-start',
+            startSeconds: 72,
+            confidence: 0.85,
+            reason: 'Transcript sponsor start cue: "sponsored by".'
+          }
+        ],
+        transcriptContext: 'This video is sponsored by Acme.',
         summary: '1:12-2:12 · 86% · transcript + QR',
         sources: ['transcript', 'QR']
       }
