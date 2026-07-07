@@ -14,6 +14,21 @@ export interface VideoPlatformAdapter {
 export interface StatusUiHandle {
   setStatus(message: string): void;
   setProgress(value: number): void;
+  setDetails?(details: StatusUiDetails): void;
   setCandidates(candidates: SegmentCandidate[]): void;
   destroy(): void;
+}
+
+export interface StatusUiDetails {
+  phase: string;
+  sampleCount: number;
+  evidenceCounts: {
+    transcript: number;
+    progressBar: number;
+    qrCode: number;
+    visibleLink: number;
+    total: number;
+  };
+  videoCurrentTimeSeconds: number | null;
+  videoDurationSeconds: number | null;
 }

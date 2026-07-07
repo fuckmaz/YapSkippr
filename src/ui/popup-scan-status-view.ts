@@ -1,4 +1,5 @@
 import { isScanStatusStale, type ScanStatusPhase, type ScanStatusSnapshot } from '../core/scan-status';
+import type { EvidenceKind, EvidenceSource } from '../core/types';
 
 export interface PopupScanStatusView {
   title: string;
@@ -13,6 +14,7 @@ export interface PopupScanStatusView {
   evidenceItems: PopupEvidenceItem[];
   candidates: PopupCandidateView[];
   events: PopupEventView[];
+  evidenceEvents: PopupEvidenceEventView[];
   updatedText: string;
   isRunning: boolean;
 }
@@ -34,7 +36,19 @@ export interface PopupEventView {
   id: string;
   level: 'info' | 'warn' | 'error';
   message: string;
+  detail?: string;
   ageText: string;
+}
+
+export interface PopupEvidenceEventView {
+  id: string;
+  sourceLabel: string;
+  kindLabel: string;
+  timeLabel: string;
+  startSeconds: number;
+  confidenceText: string;
+  reason: string;
+  detail?: string;
 }
 
 const phaseLabels: Record<ScanStatusPhase, string> = {
@@ -43,6 +57,7 @@ const phaseLabels: Record<ScanStatusPhase, string> = {
   transcript: 'Transcript',
   frames: 'Frames',
   fusion: 'Fusion',
+  done: 'Done',
   permission: 'Permission',
   stopped: 'Stopped',
   error: 'Error'
@@ -84,7 +99,18 @@ export function createPopupScanStatusView(
       id: event.id,
       level: event.level,
       message: event.message,
+      ...(event.detail ? { detail: event.detail } : {}),
       ageText: formatAge(event.timestamp, now)
+    })),
+    evidenceEvents: status.recentEvidence.map((evidence) => ({
+      id: evidence.id,
+      sourceLabel: formatEvidenceSource(evidence.source),
+      kindLabel: formatEvidenceKind(evidence.kind),
+      timeLabel: formatTimestamp(evidence.startSeconds),
+      startSeconds: evidence.startSeconds,
+      confidenceText: `${Math.round(evidence.confidence * 100)}%`,
+      reason: evidence.reason,
+      ...(evidence.detail ? { detail: evidence.detail } : {})
     })),
     updatedText: formatUpdatedAt(status.updatedAt, now),
     isRunning: !stale && runningPhases.has(status.phase)
@@ -125,6 +151,19 @@ function formatTimestamp(seconds: number): string {
   const minutes = Math.floor(rounded / 60);
   const remainingSeconds = rounded % 60;
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+function formatEvidenceSource(source: EvidenceSource): string {
+  if (source === 'transcript') return 'Transcript';
+  if (source === 'frame-progress-bar') return 'Progress bar';
+  if (source === 'frame-qr-code') return 'QR';
+  return 'Visible link';
+}
+
+function formatEvidenceKind(kind: EvidenceKind): string {
+  if (kind === 'ad-read-start') return 'Start';
+  if (kind === 'ad-read-end') return 'End';
+  return 'Presence';
 }
 
 function clamp(value: number, min: number, max: number): number {

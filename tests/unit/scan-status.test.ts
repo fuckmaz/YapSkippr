@@ -1,5 +1,6 @@
 import {
   appendScanStatusEvent,
+  appendScanStatusEvidence,
   createIdleScanStatus,
   isScanStatusStale,
   mergeScanStatus,
@@ -82,6 +83,7 @@ test('merges scan status patches for popup subscribers', () => {
         sources: ['transcript', 'QR']
       }
     ],
+    recentEvidence: [],
     recentEvents: [
       {
         id: 'event-1',
@@ -102,7 +104,7 @@ test('normalizes missing or malformed scan status to idle', () => {
 test('appends recent events newest first and limits the timeline', () => {
   let status = createIdleScanStatus(100);
 
-  for (let index = 0; index < 10; index += 1) {
+  for (let index = 0; index < 18; index += 1) {
     status = appendScanStatusEvent(status, {
       level: index % 2 === 0 ? 'info' : 'warn',
       message: `Event ${index}`,
@@ -110,9 +112,46 @@ test('appends recent events newest first and limits the timeline', () => {
     });
   }
 
-  expect(status.recentEvents).toHaveLength(8);
-  expect(status.recentEvents[0]?.message).toBe('Event 9');
+  expect(status.recentEvents).toHaveLength(16);
+  expect(status.recentEvents[0]?.message).toBe('Event 17');
   expect(status.recentEvents.at(-1)?.message).toBe('Event 2');
+});
+
+test('appends detailed evidence entries and source-specific timeline events', () => {
+  const status = appendScanStatusEvidence(
+    createIdleScanStatus(100),
+    [
+      {
+        source: 'frame-visible-link',
+        kind: 'ad-read-presence',
+        startSeconds: 42,
+        confidence: 0.72,
+        reason: 'Detected visible HTTP link in sampled video frame.',
+        raw: {
+          links: ['https://brand.example/deal'],
+          text: 'Visit https://brand.example/deal'
+        }
+      }
+    ],
+    200
+  );
+
+  expect(status.recentEvidence).toEqual([
+    {
+      id: '200-0-frame-visible-link-42',
+      source: 'frame-visible-link',
+      kind: 'ad-read-presence',
+      startSeconds: 42,
+      confidence: 0.72,
+      reason: 'Detected visible HTTP link in sampled video frame.',
+      detail: 'https://brand.example/deal'
+    }
+  ]);
+  expect(status.recentEvents[0]).toMatchObject({
+    level: 'info',
+    message: 'Visible link evidence at 0:42',
+    detail: 'Detected visible HTTP link in sampled video frame.'
+  });
 });
 
 test('marks running scan status stale after the threshold', () => {

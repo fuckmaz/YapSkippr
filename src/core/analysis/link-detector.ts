@@ -39,6 +39,10 @@ export async function detectVisibleLinkCue(
   }
 }
 
+export function isVisibleTextDetectionAvailable(): boolean {
+  return Boolean(getNativeTextDetector());
+}
+
 export function detectVisibleLinkCueFromText(text: string, currentTimeSeconds: number): TimedEvidence[] {
   const links = extractHttpLinks(text);
   if (links.length === 0) return [];

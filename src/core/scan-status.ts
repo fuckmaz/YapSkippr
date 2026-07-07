@@ -1,3 +1,5 @@
+import type { EvidenceKind, EvidenceSource, TimedEvidence } from './types';
+
 export const SCAN_STATUS_STORAGE_KEY = 'yapskippr.scanStatus';
 
 export type ScanStatusPhase =
@@ -6,6 +8,7 @@ export type ScanStatusPhase =
   | 'transcript'
   | 'frames'
   | 'fusion'
+  | 'done'
   | 'permission'
   | 'stopped'
   | 'error';
@@ -25,6 +28,7 @@ export interface ScanStatusSnapshot {
   candidateCount: number;
   evidenceCounts: ScanEvidenceCounts;
   candidates: ScanStatusCandidate[];
+  recentEvidence: ScanStatusEvidence[];
   recentEvents: ScanStatusEvent[];
   updatedAt: number;
 }
@@ -46,6 +50,17 @@ export interface ScanStatusCandidate {
   sources: string[];
 }
 
+export interface ScanStatusEvidence {
+  id: string;
+  source: EvidenceSource;
+  kind: EvidenceKind;
+  startSeconds: number;
+  endSeconds?: number;
+  confidence: number;
+  reason: string;
+  detail?: string;
+}
+
 export type ScanStatusEventLevel = 'info' | 'warn' | 'error';
 
 export interface ScanStatusEvent {
@@ -64,6 +79,7 @@ const phases = new Set<ScanStatusPhase>([
   'transcript',
   'frames',
   'fusion',
+  'done',
   'permission',
   'stopped',
   'error'
@@ -87,6 +103,7 @@ export function createIdleScanStatus(now = Date.now()): ScanStatusSnapshot {
     candidateCount: 0,
     evidenceCounts: createEmptyEvidenceCounts(),
     candidates: [],
+    recentEvidence: [],
     recentEvents: [],
     updatedAt: now
   };
@@ -127,6 +144,7 @@ export function normalizeScanStatus(value: unknown, now = Date.now()): ScanStatu
     candidateCount: nonNegativeInteger(value.candidateCount),
     evidenceCounts: normalizeEvidenceCounts(value.evidenceCounts),
     candidates: normalizeCandidates(value.candidates),
+    recentEvidence: normalizeRecentEvidence(value.recentEvidence),
     recentEvents: normalizeEvents(value.recentEvents),
     updatedAt: nonNegativeInteger(value.updatedAt, now)
   };
@@ -149,7 +167,31 @@ export function appendScanStatusEvent(
         ...(event.detail ? { detail: event.detail } : {})
       },
       ...status.recentEvents
-    ].slice(0, 8)
+    ].slice(0, 16)
+  };
+}
+
+export function appendScanStatusEvidence(
+  status: ScanStatusSnapshot,
+  evidence: readonly TimedEvidence[],
+  timestamp = Date.now()
+): ScanStatusSnapshot {
+  if (evidence.length === 0) return status;
+
+  const recentEvidence = evidence.map((item, index) => toScanStatusEvidence(item, timestamp, index));
+  const recentEvents = recentEvidence.map((item) => ({
+    id: `${item.id}-event`,
+    level: 'info' as const,
+    message: `${formatEvidenceSource(item.source)} evidence at ${formatTimestamp(item.startSeconds)}`,
+    timestamp,
+    detail: item.reason
+  }));
+
+  return {
+    ...status,
+    recentEvidence: [...recentEvidence, ...status.recentEvidence].slice(0, 16),
+    recentEvents: [...recentEvents, ...status.recentEvents].slice(0, 16),
+    updatedAt: timestamp
   };
 }
 
@@ -244,6 +286,41 @@ function normalizeCandidates(value: unknown): ScanStatusCandidate[] {
   }).slice(0, 5);
 }
 
+function normalizeRecentEvidence(value: unknown): ScanStatusEvidence[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((evidence): ScanStatusEvidence[] => {
+    if (!isRecord(evidence)) return [];
+    const id = nullableString(evidence.id);
+    const source = evidence.source;
+    const kind = evidence.kind;
+    const startSeconds = nullableNonNegativeNumber(evidence.startSeconds);
+    const confidence = typeof evidence.confidence === 'number' && Number.isFinite(evidence.confidence)
+      ? clamp(evidence.confidence, 0, 1)
+      : null;
+    const reason = nullableString(evidence.reason);
+
+    if (!id || !isEvidenceSource(source) || !isEvidenceKind(kind) || startSeconds === null || confidence === null || !reason) {
+      return [];
+    }
+
+    return [
+      {
+        id,
+        source,
+        kind,
+        startSeconds,
+        ...(nullableNonNegativeNumber(evidence.endSeconds) !== null
+          ? { endSeconds: nullableNonNegativeNumber(evidence.endSeconds) as number }
+          : {}),
+        confidence,
+        reason,
+        ...(nullableString(evidence.detail) ? { detail: nullableString(evidence.detail) as string } : {})
+      }
+    ];
+  }).slice(0, 16);
+}
+
 function normalizeEvents(value: unknown): ScanStatusEvent[] {
   if (!Array.isArray(value)) return [];
 
@@ -265,9 +342,57 @@ function normalizeEvents(value: unknown): ScanStatusEvent[] {
         ...(nullableString(event.detail) ? { detail: nullableString(event.detail) as string } : {})
       }
     ];
-  }).slice(0, 8);
+  }).slice(0, 16);
 }
 
 function isEventLevel(value: unknown): value is ScanStatusEventLevel {
   return value === 'info' || value === 'warn' || value === 'error';
+}
+
+function toScanStatusEvidence(evidence: TimedEvidence, timestamp: number, index: number): ScanStatusEvidence {
+  return {
+    id: `${timestamp}-${index}-${evidence.source}-${Math.round(evidence.startSeconds)}`,
+    source: evidence.source,
+    kind: evidence.kind,
+    startSeconds: evidence.startSeconds,
+    ...(evidence.endSeconds === undefined ? {} : { endSeconds: evidence.endSeconds }),
+    confidence: clamp(evidence.confidence, 0, 1),
+    reason: evidence.reason,
+    ...(summarizeRawEvidence(evidence.raw) ? { detail: summarizeRawEvidence(evidence.raw) as string } : {})
+  };
+}
+
+function summarizeRawEvidence(raw: unknown): string | null {
+  if (!isRecord(raw)) return null;
+
+  if (Array.isArray(raw.links)) {
+    const links = raw.links.filter((link): link is string => typeof link === 'string' && link.length > 0);
+    if (links.length > 0) return links.join(', ');
+  }
+
+  if (typeof raw.value === 'string' && raw.value.trim()) return raw.value.trim();
+  if (typeof raw.text === 'string' && raw.text.trim()) return raw.text.trim();
+  return null;
+}
+
+function formatEvidenceSource(source: EvidenceSource): string {
+  if (source === 'transcript') return 'Transcript';
+  if (source === 'frame-progress-bar') return 'Progress bar';
+  if (source === 'frame-qr-code') return 'QR';
+  return 'Visible link';
+}
+
+function formatTimestamp(seconds: number): string {
+  const rounded = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(rounded / 60);
+  const remainingSeconds = rounded % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+function isEvidenceSource(value: unknown): value is EvidenceSource {
+  return value === 'transcript' || value === 'frame-progress-bar' || value === 'frame-qr-code' || value === 'frame-visible-link';
+}
+
+function isEvidenceKind(value: unknown): value is EvidenceKind {
+  return value === 'ad-read-start' || value === 'ad-read-end' || value === 'ad-read-presence';
 }

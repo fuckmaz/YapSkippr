@@ -8,7 +8,13 @@
   </head>
   <body>
     <main>
-      <h1>YapSkippr</h1>
+      <div class="app-head">
+        <h1>YapSkippr</h1>
+        <div class="mode-toggle" aria-label="Popup detail mode">
+          <button id="basic-mode-toggle" type="button" data-active="true">Basic</button>
+          <button id="detailed-mode-toggle" type="button">Detailed</button>
+        </div>
+      </div>
       <p id="status">Open a YouTube video to scan for ad-read cues.</p>
       <section class="scan-panel" aria-label="Current scan">
         <div class="scan-panel-head">
@@ -76,6 +82,37 @@
         <p id="candidate-action-status" class="action-status" aria-live="polite"></p>
         <div class="section-label">Recent activity</div>
         <ol id="scan-events" class="scan-events"></ol>
+        <section id="developer-panel" class="developer-panel" aria-label="Detailed scan information" hidden>
+          <div class="section-label">Detailed mode</div>
+          <dl class="detail-grid">
+            <div>
+              <dt>Video ID</dt>
+              <dd id="detail-video-id">-</dd>
+            </div>
+            <div>
+              <dt>Page URL</dt>
+              <dd id="detail-page-url">-</dd>
+            </div>
+            <div>
+              <dt>Total evidence</dt>
+              <dd id="detail-total-evidence">0</dd>
+            </div>
+            <div>
+              <dt>Updated</dt>
+              <dd id="detail-updated">-</dd>
+            </div>
+          </dl>
+          <label class="endpoint-field" for="feedback-endpoint">
+            Feedback API endpoint
+            <span>
+              <input id="feedback-endpoint" type="url" placeholder="https://example.com/api/yapskippr/feedback" />
+              <button id="save-feedback-endpoint" type="button">Save</button>
+            </span>
+          </label>
+          <p id="feedback-status" class="action-status" aria-live="polite">Feedback is local until an endpoint is saved.</p>
+          <div class="section-label">Evidence details</div>
+          <ol id="scan-evidence-events" class="evidence-events"></ol>
+        </section>
         <p id="scan-updated" class="scan-updated">Not updated yet.</p>
       </section>
       <section aria-label="Frame capture access">

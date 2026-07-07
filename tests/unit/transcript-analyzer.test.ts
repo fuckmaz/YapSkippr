@@ -33,6 +33,20 @@ test('emits strong start evidence for made-possible-by sponsor language', () => 
   expect(evidence[0]?.reason).toContain('made possible by');
 });
 
+test('matches sponsor phrases split across adjacent caption cues', () => {
+  const evidence = analyzeTranscriptCues([
+    cue(18, 'This episode is made possible'),
+    cue(20, 'by Acme VPN.')
+  ]);
+
+  expect(evidence).toHaveLength(1);
+  expect(evidence[0]).toMatchObject({
+    source: 'transcript',
+    kind: 'ad-read-start',
+    startSeconds: 18
+  });
+});
+
 test('accepts code-configured transcript phrase groups', () => {
   const evidence = analyzeTranscriptCues(
     [cue(64, 'Creator break starts here before the main topic continues.')],

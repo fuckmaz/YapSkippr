@@ -32,12 +32,24 @@ test('formats a running scan snapshot for the popup', () => {
         sources: ['transcript', 'QR']
       }
     ],
+    recentEvidence: [
+      {
+        id: 'evidence-1',
+        source: 'frame-visible-link',
+        kind: 'ad-read-presence',
+        startSeconds: 95,
+        confidence: 0.72,
+        reason: 'Detected visible HTTP link in sampled video frame.',
+        detail: 'https://brand.example/deal'
+      }
+    ],
     recentEvents: [
       {
         id: 'event-1',
         level: 'info',
         message: 'Transcript evidence found',
-        timestamp: 1_000
+        timestamp: 1_000,
+        detail: '3 cues matched'
       }
     ],
     updatedAt: 1_000
@@ -73,7 +85,20 @@ test('formats a running scan snapshot for the popup', () => {
         id: 'event-1',
         level: 'info',
         message: 'Transcript evidence found',
+        detail: '3 cues matched',
         ageText: '5s ago'
+      }
+    ],
+    evidenceEvents: [
+      {
+        id: 'evidence-1',
+        sourceLabel: 'Visible link',
+        kindLabel: 'Presence',
+        timeLabel: '1:35',
+        startSeconds: 95,
+        confidenceText: '72%',
+        reason: 'Detected visible HTTP link in sampled video frame.',
+        detail: 'https://brand.example/deal'
       }
     ],
     updatedText: 'Updated 5s ago',
@@ -103,6 +128,7 @@ test('formats idle scan state for the popup', () => {
       total: 0
     },
     candidates: [],
+    recentEvidence: [],
     recentEvents: [],
     updatedAt: 10_000
   };
@@ -117,6 +143,7 @@ test('formats idle scan state for the popup', () => {
     fastScanText: 'Fast pre-scan off',
     candidates: [],
     events: [],
+    evidenceEvents: [],
     updatedText: 'Updated 1m ago',
     isRunning: false
   });
@@ -144,6 +171,7 @@ test('labels stale running scan state in the popup', () => {
       total: 0
     },
     candidates: [],
+    recentEvidence: [],
     recentEvents: [],
     updatedAt: 1_000
   };

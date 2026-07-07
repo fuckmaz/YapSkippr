@@ -39,6 +39,8 @@ test('Chrome build output contains the YouTube content script and preserved meta
   expect(popupHtml).toContain('Current scan');
   expect(popupHtml).toContain('Fast pre-scan');
   expect(popupHtml).toContain('Evidence');
+  expect(popupHtml).toContain('Detailed mode');
+  expect(popupHtml).toContain('Feedback API endpoint');
   expect(popupHtml).toContain('Recent activity');
 
   const chunkFiles = await readdir(join(process.cwd(), '.output/chrome-mv3/chunks'));
@@ -53,4 +55,6 @@ test('Chrome build output contains the YouTube content script and preserved meta
   expect(popupScript).toContain('tabs.sendMessage');
   expect(popupScript).toContain('YAPSKIPPR_SEEK_TO');
   expect(popupScript).toContain('YAPSKIPPR_SET_FAST_SCAN');
+  expect(popupScript).toContain('yapskippr.feedbackEndpoint');
+  expect(popupScript).toContain('Feedback endpoint saved');
 });

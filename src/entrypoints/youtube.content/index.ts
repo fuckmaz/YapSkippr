@@ -2,14 +2,16 @@ import './style.css';
 import { buildSegmentCandidates } from '../../core/analysis/evidence-fusion';
 import { detectProgressBarCue } from '../../core/analysis/progress-bar-detector';
 import { detectQrCue } from '../../core/analysis/qr-detector';
+import { calculateFrameScanProgress, isVideoPlaybackComplete } from '../../core/analysis/scan-progress';
 import {
   isCapturePermissionMissingError,
   isExtensionContextInvalidatedError,
   startScreenshotFrameSampler
 } from '../../core/analysis/frame-sampler';
-import { detectVisibleLinkCue } from '../../core/analysis/link-detector';
+import { detectVisibleLinkCue, isVisibleTextDetectionAvailable } from '../../core/analysis/link-detector';
 import { analyzeTranscriptCues } from '../../core/analysis/transcript-analyzer';
 import {
+  appendScanStatusEvidence,
   appendScanStatusEvent,
   createIdleScanStatus,
   createEmptyEvidenceCounts,
@@ -135,6 +137,7 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
   let stopped = false;
   let sampleCount = 0;
   let lastCandidateCount = 0;
+  let completionPublished = false;
   let fastScanEnabled = false;
   let fastScanIntervalSeconds = 2;
   let stopFrames: (() => void) | undefined;
@@ -159,8 +162,30 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
         timestamp: Date.now()
       });
     }
+    syncPlayerDetails();
+    persistScanStatus();
+  }
+
+  function publishEvidence(evidenceItems: readonly TimedEvidence[]): void {
+    if (evidenceItems.length === 0) return;
+    scanStatus = appendScanStatusEvidence(scanStatus, evidenceItems);
+    syncPlayerDetails();
+    persistScanStatus();
+  }
+
+  function persistScanStatus(): void {
     void writeStoredScanStatus(scanStatus).catch((error: unknown) => {
       logger.warn('popup status update failed', error);
+    });
+  }
+
+  function syncPlayerDetails(): void {
+    statusUi.setDetails?.({
+      phase: scanStatus.phase,
+      sampleCount: scanStatus.sampleCount,
+      evidenceCounts: scanStatus.evidenceCounts,
+      videoCurrentTimeSeconds: scanStatus.videoCurrentTimeSeconds,
+      videoDurationSeconds: scanStatus.videoDurationSeconds
     });
   }
 
@@ -215,6 +240,16 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
     fastScanEnabled,
     fastScanIntervalSeconds
   });
+  if (!isVisibleTextDetectionAvailable()) {
+    publishScanStatus(
+      {},
+      {
+        level: 'warn',
+        message: 'Visible-link OCR unavailable',
+        detail: 'Chrome text detection is still experimental; onscreen links may not be detected unless TextDetector is enabled.'
+      }
+    );
+  }
   setScanProgress('Loading transcript cues...', 0.2, 'transcript', {}, { level: 'info', message: 'Transcript scan started' });
 
   void adapter
@@ -224,6 +259,7 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
       const transcriptEvidence = analyzeTranscriptCues(cues);
       evidence.push(...transcriptEvidence);
       logger.info('transcript analyzed', { cues: cues.length, evidence: transcriptEvidence.length });
+      publishEvidence(transcriptEvidence);
       publishCandidates(updateCandidates(evidence, statusUi));
       setScanProgress(
         'Analyzing visible video frames...',
@@ -248,6 +284,11 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
       );
     });
 
+  const onVideoEnded = (): void => {
+    publishCompletionIfReady(playableVideo.currentTime, getFiniteDuration(playableVideo));
+  };
+  playableVideo.addEventListener('ended', onVideoEnded);
+
   function restartFrameSampling(): void {
     stopFrames?.();
     stopFrames = startScreenshotFrameSampler(playableVideo, {
@@ -270,21 +311,21 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
         if (frameEvidence.length > 0) {
           evidence.push(...frameEvidence);
           logger.info('frame evidence detected', frameEvidence);
+          publishEvidence(frameEvidence);
           publishCandidates(updateCandidates(evidence, statusUi));
-          publishScanStatus(
-            { evidenceCounts: countEvidenceSources(evidence) },
-            {
-              level: 'info',
-              message: `${frameEvidence.length} frame ${frameEvidence.length === 1 ? 'cue' : 'cues'} found`,
-              detail: summarizeEvidenceSources(frameEvidence)
-            }
-          );
         }
 
-        setScanProgress(`Analyzing frames... ${sampleCount} sampled`, Math.min(0.95, 0.35 + sampleCount / 40), 'frames', {
+        const durationSeconds = getFiniteDuration(playableVideo);
+        if (publishCompletionIfReady(frame.currentTimeSeconds, durationSeconds)) return;
+
+        setScanProgress(`Analyzing frames... ${sampleCount} sampled`, calculateFrameScanProgress({
+          currentTimeSeconds: frame.currentTimeSeconds,
+          durationSeconds,
+          sampleCount
+        }), 'frames', {
           sampleCount,
           videoCurrentTimeSeconds: frame.currentTimeSeconds,
-          videoDurationSeconds: getFiniteDuration(playableVideo),
+          videoDurationSeconds: durationSeconds,
           fastScanEnabled,
           fastScanIntervalSeconds,
           evidenceCounts: countEvidenceSources(evidence)
@@ -333,6 +374,7 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
     stop() {
       stopped = true;
       stopFrames?.();
+      playableVideo.removeEventListener('ended', onVideoEnded);
       publishScanStatus({ phase: 'stopped', message: 'Scan stopped.' }, { level: 'info', message: 'Scan stopped' });
       statusUi.destroy();
     },
@@ -361,6 +403,30 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
       return { ok: true, enabled: fastScanEnabled, intervalSeconds: fastScanIntervalSeconds };
     }
   };
+
+  function publishCompletionIfReady(currentTimeSeconds: number | null, durationSeconds: number | null): boolean {
+    if (completionPublished || !isVideoPlaybackComplete(currentTimeSeconds, durationSeconds)) return completionPublished;
+
+    completionPublished = true;
+    stopFrames?.();
+    setScanProgress(
+      'Scan complete. Video watched to the end.',
+      1,
+      'done',
+      {
+        sampleCount,
+        videoCurrentTimeSeconds: currentTimeSeconds,
+        videoDurationSeconds: durationSeconds,
+        evidenceCounts: countEvidenceSources(evidence)
+      },
+      {
+        level: 'info',
+        message: 'Scan complete',
+        detail: `${sampleCount} frames sampled, ${evidence.length} evidence hits`
+      }
+    );
+    return true;
+  }
 }
 
 async function waitForVideo(adapter: ReturnType<typeof createYouTubeAdapter>, timeoutMs = 10_000): Promise<HTMLVideoElement | null> {
@@ -410,10 +476,6 @@ function countEvidenceSources(evidence: TimedEvidence[]): ScanEvidenceCounts {
 
 function getCandidateSourceLabels(candidate: SegmentCandidate): string[] {
   return [...new Set(candidate.evidence.map((item) => formatEvidenceSource(item.source)))];
-}
-
-function summarizeEvidenceSources(evidence: TimedEvidence[]): string {
-  return [...new Set(evidence.map((item) => formatEvidenceSource(item.source)))].join(' + ');
 }
 
 function formatEvidenceSource(source: EvidenceSource): string {

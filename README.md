@@ -37,9 +37,10 @@ When evidence is found, YapSkippr fuses the signals into candidate segments and 
 ## Current Experience
 
 - Live popup dashboard with scan phase, sampled frame count, video timing, evidence counts, candidate segments, and recent activity.
+- Basic and detailed popup modes. Detailed mode shows raw evidence history, source-specific activity, and feedback controls.
 - Fast pre-scan mode that keeps analyzing the current YouTube tab every 1-5 seconds after the popup closes.
 - Candidate jump actions for quickly seeking to detected segment start times.
-- Lightweight status block mounted near the YouTube player.
+- Lightweight status block mounted near the YouTube player with evidence counts and clickable candidate timecodes.
 - Console logging for lower-level debugging while the detector is still evolving.
 - Chrome and Chromium support first, with a Firefox build available for local testing.
 
@@ -130,6 +131,10 @@ Transcript ad-read cues are configured in `DEFAULT_TRANSCRIPT_PHRASE_GROUPS` ins
 - `phrases`: the editable strings to look for in YouTube caption text.
 
 Supplying a custom `phraseGroups` list to `analyzeTranscriptCues()` replaces the defaults, which keeps future developer-mode UI or stored settings straightforward.
+
+### Feedback Server Plan
+
+The extension can send candidate/evidence feedback from detailed popup mode once a feedback API endpoint is configured. The backend/admin dashboard implementation plan is documented in `docs/superpowers/plans/2026-07-07-yapskippr-feedback-api-admin-dashboard.md`.
 
 ## Project Structure
 

@@ -11,6 +11,7 @@ export interface TranscriptPhraseGroup {
 
 export interface TranscriptAnalysisOptions {
   phraseGroups?: readonly TranscriptPhraseGroup[];
+  contextCueCount?: number;
 }
 
 export const DEFAULT_TRANSCRIPT_PHRASE_GROUPS: readonly TranscriptPhraseGroup[] = [
@@ -90,9 +91,10 @@ export function analyzeTranscriptCues(
 ): TimedEvidence[] {
   const evidence: TimedEvidence[] = [];
   const phraseGroups = options.phraseGroups ?? DEFAULT_TRANSCRIPT_PHRASE_GROUPS;
+  const contextCueCount = Math.max(1, Math.floor(options.contextCueCount ?? 2));
 
-  for (const cue of cues) {
-    const normalized = normalizeText(cue.text);
+  for (const [index, cue] of cues.entries()) {
+    const normalized = normalizeText(getCueWindowText(cues, index, contextCueCount));
     const match = findPhraseGroupMatch(normalized, phraseGroups);
     if (match) {
       evidence.push({
@@ -108,6 +110,13 @@ export function analyzeTranscriptCues(
   }
 
   return evidence;
+}
+
+function getCueWindowText(cues: readonly TranscriptCue[], startIndex: number, count: number): string {
+  return cues
+    .slice(startIndex, startIndex + count)
+    .map((cue) => cue.text)
+    .join(' ');
 }
 
 function normalizeText(text: string): string {
