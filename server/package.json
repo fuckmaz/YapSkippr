@@ -10,6 +10,7 @@
     "migrate": "tsx src/db/migrate.ts",
     "start": "node dist/index.js",
     "test": "vitest run",
+    "test:dashboard": "npm run build && vitest run --config vitest.dashboard.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -29,6 +30,7 @@
     "@types/pg": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "playwright": "latest",
     "tsx": "latest",
     "typescript": "latest",
     "vitest": "latest"

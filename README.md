@@ -127,6 +127,7 @@ npm test
 npm run typecheck
 npm run test:e2e
 npm run test:server
+npm run test:dashboard
 npm run typecheck:server
 ```
 
