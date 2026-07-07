@@ -19,6 +19,55 @@ test('emits strong start evidence for sponsor language', () => {
   expect(evidence[0]?.confidence).toBeGreaterThanOrEqual(0.75);
 });
 
+test('emits strong start evidence for made-possible-by sponsor language', () => {
+  const evidence = analyzeTranscriptCues([
+    cue(18, 'This episode is made possible by Acme VPN.')
+  ]);
+
+  expect(evidence).toHaveLength(1);
+  expect(evidence[0]).toMatchObject({
+    source: 'transcript',
+    kind: 'ad-read-start',
+    startSeconds: 18
+  });
+  expect(evidence[0]?.reason).toContain('made possible by');
+});
+
+test('accepts code-configured transcript phrase groups', () => {
+  const evidence = analyzeTranscriptCues(
+    [cue(64, 'Creator break starts here before the main topic continues.')],
+    {
+      phraseGroups: [
+        {
+          id: 'custom-start',
+          kind: 'ad-read-start',
+          confidence: 0.8,
+          reasonLabel: 'custom transcript cue',
+          phrases: ['creator break starts here']
+        }
+      ]
+    }
+  );
+
+  expect(evidence).toHaveLength(1);
+  expect(evidence[0]).toMatchObject({
+    source: 'transcript',
+    kind: 'ad-read-start',
+    startSeconds: 64,
+    confidence: 0.8
+  });
+  expect(evidence[0]?.reason).toContain('creator break starts here');
+});
+
+test('uses supplied phrase groups instead of defaults so phrases can be removed', () => {
+  const evidence = analyzeTranscriptCues(
+    [cue(12, "Before we continue, today's sponsor is Acme VPN.")],
+    { phraseGroups: [] }
+  );
+
+  expect(evidence).toEqual([]);
+});
+
 test('emits weaker presence evidence for call-to-action language', () => {
   const evidence = analyzeTranscriptCues([
     cue(28, 'Use code yapskippr at checkout for a limited time.')

@@ -121,6 +121,16 @@ npm run typecheck
 npm run test:e2e
 ```
 
+### Transcript Phrase Tuning
+
+Transcript ad-read cues are configured in `DEFAULT_TRANSCRIPT_PHRASE_GROUPS` inside `src/core/analysis/transcript-analyzer.ts`. Each group defines:
+
+- `kind`: whether a match is an ad-read start, presence cue, or end cue.
+- `confidence`: how strongly the match contributes to candidate scoring.
+- `phrases`: the editable strings to look for in YouTube caption text.
+
+Supplying a custom `phraseGroups` list to `analyzeTranscriptCues()` replaces the defaults, which keeps future developer-mode UI or stored settings straightforward.
+
 ## Project Structure
 
 ```text
