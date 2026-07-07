@@ -61,6 +61,22 @@ test('creates a low-confidence open candidate from frame-only progress evidence'
   expect(candidates[0]?.confidence).toBeLessThan(0.7);
 });
 
+test('creates an open candidate from visible link evidence', () => {
+  const candidates = buildSegmentCandidates([
+    evidence({
+      source: 'frame-visible-link',
+      kind: 'ad-read-presence',
+      startSeconds: 55,
+      confidence: 0.72,
+      reason: 'visible link'
+    })
+  ]);
+
+  expect(candidates).toHaveLength(1);
+  expect(candidates[0]?.startSeconds).toBe(55);
+  expect(candidates[0]?.confidence).toBeGreaterThan(0.4);
+});
+
 test('defaults a high-confidence open candidate to two minutes', () => {
   const candidates = buildSegmentCandidates([
     evidence({ kind: 'ad-read-start', startSeconds: 10, confidence: 0.9 }),

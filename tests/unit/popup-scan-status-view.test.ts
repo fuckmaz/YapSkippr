@@ -12,12 +12,15 @@ test('formats a running scan snapshot for the popup', () => {
     sampleCount: 12,
     videoCurrentTimeSeconds: 93,
     videoDurationSeconds: 612,
+    fastScanEnabled: true,
+    fastScanIntervalSeconds: 2,
     candidateCount: 2,
     evidenceCounts: {
       transcript: 3,
       progressBar: 2,
       qrCode: 1,
-      total: 6
+      visibleLink: 1,
+      total: 7
     },
     candidates: [
       {
@@ -52,8 +55,10 @@ test('formats a running scan snapshot for the popup', () => {
     evidenceItems: [
       { label: 'Transcript', value: '3' },
       { label: 'Progress', value: '2' },
-      { label: 'QR', value: '1' }
+      { label: 'QR', value: '1' },
+      { label: 'Links', value: '1' }
     ],
+    fastScanText: 'Fast pre-scan on · 2s interval',
     candidates: [
       {
         id: 'candidate-72',
@@ -87,11 +92,14 @@ test('formats idle scan state for the popup', () => {
     sampleCount: 0,
     videoCurrentTimeSeconds: null,
     videoDurationSeconds: null,
+    fastScanEnabled: false,
+    fastScanIntervalSeconds: 2,
     candidateCount: 0,
     evidenceCounts: {
       transcript: 0,
       progressBar: 0,
       qrCode: 0,
+      visibleLink: 0,
       total: 0
     },
     candidates: [],
@@ -106,6 +114,7 @@ test('formats idle scan state for the popup', () => {
     sampleCountText: '0 frames',
     candidateCountText: '0 candidates',
     videoTimeText: 'No video timing',
+    fastScanText: 'Fast pre-scan off',
     candidates: [],
     events: [],
     updatedText: 'Updated 1m ago',
@@ -124,11 +133,14 @@ test('labels stale running scan state in the popup', () => {
     sampleCount: 4,
     videoCurrentTimeSeconds: 40,
     videoDurationSeconds: 200,
+    fastScanEnabled: false,
+    fastScanIntervalSeconds: 2,
     candidateCount: 0,
     evidenceCounts: {
       transcript: 0,
       progressBar: 0,
       qrCode: 0,
+      visibleLink: 0,
       total: 0
     },
     candidates: [],

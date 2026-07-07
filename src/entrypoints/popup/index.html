@@ -51,7 +51,26 @@
             <dt>QR</dt>
             <dd id="evidence-qr">0</dd>
           </div>
+          <div>
+            <dt>Links</dt>
+            <dd id="evidence-links">0</dd>
+          </div>
         </dl>
+        <section class="fast-scan-panel" aria-label="Fast pre-scan">
+          <div class="section-label">Fast pre-scan</div>
+          <div class="fast-scan-controls">
+            <label for="fast-scan-interval">Capture every</label>
+            <select id="fast-scan-interval">
+              <option value="1">1s</option>
+              <option value="2" selected>2s</option>
+              <option value="3">3s</option>
+              <option value="4">4s</option>
+              <option value="5">5s</option>
+            </select>
+            <button id="fast-scan-toggle" type="button">Start fast pre-scan</button>
+          </div>
+          <p id="fast-scan-status" class="action-status">Fast pre-scan off</p>
+        </section>
         <div class="section-label">Candidates</div>
         <ol id="scan-candidates" class="scan-candidates"></ol>
         <p id="candidate-action-status" class="action-status" aria-live="polite"></p>

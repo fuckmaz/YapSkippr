@@ -20,12 +20,15 @@ test('merges scan status patches for popup subscribers', () => {
       sampleCount: 12,
       videoCurrentTimeSeconds: 93.4,
       videoDurationSeconds: 612,
+      fastScanEnabled: true,
+      fastScanIntervalSeconds: 2,
       candidateCount: 2,
       evidenceCounts: {
         transcript: 3,
         progressBar: 2,
         qrCode: 1,
-        total: 6
+        visibleLink: 1,
+        total: 7
       },
       candidates: [
         {
@@ -59,12 +62,15 @@ test('merges scan status patches for popup subscribers', () => {
     sampleCount: 12,
     videoCurrentTimeSeconds: 93.4,
     videoDurationSeconds: 612,
+    fastScanEnabled: true,
+    fastScanIntervalSeconds: 2,
     candidateCount: 2,
     evidenceCounts: {
       transcript: 3,
       progressBar: 2,
       qrCode: 1,
-      total: 6
+      visibleLink: 1,
+      total: 7
     },
     candidates: [
       {

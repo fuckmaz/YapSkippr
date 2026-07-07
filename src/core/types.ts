@@ -1,4 +1,4 @@
-export type EvidenceSource = 'frame-progress-bar' | 'frame-qr-code' | 'transcript';
+export type EvidenceSource = 'frame-progress-bar' | 'frame-qr-code' | 'frame-visible-link' | 'transcript';
 
 export type EvidenceKind = 'ad-read-start' | 'ad-read-end' | 'ad-read-presence';
 

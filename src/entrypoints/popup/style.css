@@ -104,6 +104,10 @@ section {
   margin: 0;
 }
 
+.evidence-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .scan-metrics div,
 .evidence-grid div {
   min-width: 0;
@@ -133,6 +137,32 @@ section {
   font-size: 11px;
   font-weight: 650;
   text-transform: uppercase;
+}
+
+.fast-scan-panel {
+  gap: 7px;
+  margin-top: 4px;
+}
+
+.fast-scan-controls {
+  display: grid;
+  grid-template-columns: auto 64px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.fast-scan-controls label {
+  color: #b9c1bd;
+  font-size: 12px;
+}
+
+.fast-scan-controls select {
+  min-height: 30px;
+  border: 1px solid #26302c;
+  border-radius: 6px;
+  background: #121514;
+  color: #f3f5f4;
+  font: inherit;
 }
 
 .scan-candidates {

@@ -24,8 +24,10 @@ test('Chrome build output contains the YouTube content script and preserved meta
   const contentScript = await readFile(join(process.cwd(), '.output/chrome-mv3/content-scripts/youtube.js'), 'utf8');
   expect(contentScript).toContain('YAPSKIPPR_CAPTURE_VISIBLE_TAB');
   expect(contentScript).toContain('YAPSKIPPR_SEEK_TO');
+  expect(contentScript).toContain('YAPSKIPPR_SET_FAST_SCAN');
   expect(contentScript).toContain('frame-progress-bar');
   expect(contentScript).toContain('frame-qr-code');
+  expect(contentScript).toContain('frame-visible-link');
 
   const backgroundScript = await readFile(join(process.cwd(), '.output/chrome-mv3/background.js'), 'utf8');
   expect(backgroundScript).toContain('setBadgeText');
@@ -35,6 +37,7 @@ test('Chrome build output contains the YouTube content script and preserved meta
   const popupHtml = await readFile(join(process.cwd(), '.output/chrome-mv3/popup.html'), 'utf8');
   expect(popupHtml).toContain('Grant frame capture access');
   expect(popupHtml).toContain('Current scan');
+  expect(popupHtml).toContain('Fast pre-scan');
   expect(popupHtml).toContain('Evidence');
   expect(popupHtml).toContain('Recent activity');
 
@@ -49,4 +52,5 @@ test('Chrome build output contains the YouTube content script and preserved meta
   expect(popupScript).toContain('storage.onChanged');
   expect(popupScript).toContain('tabs.sendMessage');
   expect(popupScript).toContain('YAPSKIPPR_SEEK_TO');
+  expect(popupScript).toContain('YAPSKIPPR_SET_FAST_SCAN');
 });

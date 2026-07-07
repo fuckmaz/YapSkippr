@@ -47,6 +47,13 @@ test('deduplicates and orders evidence source labels', () => {
             reason: 'bar'
           },
           {
+            source: 'frame-visible-link',
+            kind: 'ad-read-presence',
+            startSeconds: 80,
+            confidence: 0.72,
+            reason: 'link'
+          },
+          {
             source: 'transcript',
             kind: 'ad-read-start',
             startSeconds: 72,
@@ -63,5 +70,5 @@ test('deduplicates and orders evidence source labels', () => {
         ]
       })
     )
-  ).toBe('1:12-2:12 · 86% · transcript + progress bar');
+  ).toBe('1:12-2:12 · 86% · transcript + visible link + progress bar');
 });

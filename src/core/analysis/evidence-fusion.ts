@@ -79,6 +79,7 @@ function scoreEvidence(evidence: TimedEvidence[]): number {
 function weightForEvidence(evidence: TimedEvidence): number {
   if (evidence.source === 'frame-progress-bar') return 0.7;
   if (evidence.source === 'frame-qr-code') return 0.45;
+  if (evidence.source === 'frame-visible-link') return 0.65;
   if (evidence.kind === 'ad-read-start') return 0.75;
   if (evidence.kind === 'ad-read-end') return 0.2;
   return 0.45;

@@ -9,6 +9,7 @@ export interface PopupScanStatusView {
   sampleCountText: string;
   candidateCountText: string;
   videoTimeText: string;
+  fastScanText: string;
   evidenceItems: PopupEvidenceItem[];
   candidates: PopupCandidateView[];
   events: PopupEventView[];
@@ -65,10 +66,12 @@ export function createPopupScanStatusView(
     sampleCountText: formatCount(status.sampleCount, 'frame'),
     candidateCountText: formatCount(status.candidateCount, 'candidate'),
     videoTimeText: formatVideoTime(status.videoCurrentTimeSeconds, status.videoDurationSeconds),
+    fastScanText: status.fastScanEnabled ? `Fast pre-scan on · ${status.fastScanIntervalSeconds}s interval` : 'Fast pre-scan off',
     evidenceItems: [
       { label: 'Transcript', value: String(status.evidenceCounts.transcript) },
       { label: 'Progress', value: String(status.evidenceCounts.progressBar) },
-      { label: 'QR', value: String(status.evidenceCounts.qrCode) }
+      { label: 'QR', value: String(status.evidenceCounts.qrCode) },
+      { label: 'Links', value: String(status.evidenceCounts.visibleLink) }
     ],
     candidates: status.candidates.map((candidate) => ({
       id: candidate.id,

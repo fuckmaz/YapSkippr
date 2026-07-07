@@ -20,6 +20,8 @@ export interface ScanStatusSnapshot {
   sampleCount: number;
   videoCurrentTimeSeconds: number | null;
   videoDurationSeconds: number | null;
+  fastScanEnabled: boolean;
+  fastScanIntervalSeconds: number;
   candidateCount: number;
   evidenceCounts: ScanEvidenceCounts;
   candidates: ScanStatusCandidate[];
@@ -31,6 +33,7 @@ export interface ScanEvidenceCounts {
   transcript: number;
   progressBar: number;
   qrCode: number;
+  visibleLink: number;
   total: number;
 }
 
@@ -79,6 +82,8 @@ export function createIdleScanStatus(now = Date.now()): ScanStatusSnapshot {
     sampleCount: 0,
     videoCurrentTimeSeconds: null,
     videoDurationSeconds: null,
+    fastScanEnabled: false,
+    fastScanIntervalSeconds: 2,
     candidateCount: 0,
     evidenceCounts: createEmptyEvidenceCounts(),
     candidates: [],
@@ -117,6 +122,8 @@ export function normalizeScanStatus(value: unknown, now = Date.now()): ScanStatu
     sampleCount: nonNegativeInteger(value.sampleCount),
     videoCurrentTimeSeconds: nullableNonNegativeNumber(value.videoCurrentTimeSeconds),
     videoDurationSeconds: nullableNonNegativeNumber(value.videoDurationSeconds),
+    fastScanEnabled: value.fastScanEnabled === true,
+    fastScanIntervalSeconds: clamp(nonNegativeInteger(value.fastScanIntervalSeconds, 2), 1, 5),
     candidateCount: nonNegativeInteger(value.candidateCount),
     evidenceCounts: normalizeEvidenceCounts(value.evidenceCounts),
     candidates: normalizeCandidates(value.candidates),
@@ -151,6 +158,7 @@ export function createEmptyEvidenceCounts(): ScanEvidenceCounts {
     transcript: 0,
     progressBar: 0,
     qrCode: 0,
+    visibleLink: 0,
     total: 0
   };
 }
@@ -193,12 +201,14 @@ function normalizeEvidenceCounts(value: unknown): ScanEvidenceCounts {
   const transcript = nonNegativeInteger(value.transcript);
   const progressBar = nonNegativeInteger(value.progressBar);
   const qrCode = nonNegativeInteger(value.qrCode);
-  const total = nonNegativeInteger(value.total, transcript + progressBar + qrCode);
+  const visibleLink = nonNegativeInteger(value.visibleLink);
+  const total = nonNegativeInteger(value.total, transcript + progressBar + qrCode + visibleLink);
 
   return {
     transcript,
     progressBar,
     qrCode,
+    visibleLink,
     total
   };
 }

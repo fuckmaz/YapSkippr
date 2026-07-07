@@ -3,10 +3,11 @@ import type { EvidenceSource, SegmentCandidate } from '../core/types';
 const SOURCE_LABELS: Record<EvidenceSource, string> = {
   transcript: 'transcript',
   'frame-qr-code': 'QR',
+  'frame-visible-link': 'visible link',
   'frame-progress-bar': 'progress bar'
 };
 
-const SOURCE_ORDER: EvidenceSource[] = ['transcript', 'frame-qr-code', 'frame-progress-bar'];
+const SOURCE_ORDER: EvidenceSource[] = ['transcript', 'frame-qr-code', 'frame-visible-link', 'frame-progress-bar'];
 
 export function formatCandidateSummary(candidate: SegmentCandidate): string {
   const start = formatTimestamp(candidate.startSeconds);

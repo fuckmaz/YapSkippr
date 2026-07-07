@@ -7,6 +7,7 @@ import {
   isExtensionContextInvalidatedError,
   startScreenshotFrameSampler
 } from '../../core/analysis/frame-sampler';
+import { detectVisibleLinkCue } from '../../core/analysis/link-detector';
 import { analyzeTranscriptCues } from '../../core/analysis/transcript-analyzer';
 import {
   appendScanStatusEvent,
@@ -27,10 +28,18 @@ import { createLogger } from '../../ui/logger';
 
 const logger = createLogger('youtube-content');
 const SEEK_TO_MESSAGE_TYPE = 'YAPSKIPPR_SEEK_TO';
+const FAST_SCAN_MESSAGE_TYPE = 'YAPSKIPPR_SET_FAST_SCAN';
+const NORMAL_SAMPLE_INTERVAL_MS = 5000;
 
 interface SeekToRequest {
   type?: string;
   seconds?: number;
+}
+
+interface FastScanRequest {
+  type?: string;
+  enabled?: boolean;
+  intervalSeconds?: number;
 }
 
 interface SeekToResponse {
@@ -39,18 +48,42 @@ interface SeekToResponse {
   error?: string;
 }
 
+interface FastScanResponse {
+  ok: boolean;
+  enabled?: boolean;
+  intervalSeconds?: number;
+  error?: string;
+}
+
+interface ActiveScanControl {
+  stop(): void;
+  setFastScan(enabled: boolean, intervalSeconds: number): FastScanResponse;
+}
+
 export default defineContentScript({
   matches: ['https://youtube.com/*', 'https://www.youtube.com/*', 'https://*.youtube.com/*', 'https://youtu.be/*'],
   cssInjectionMode: 'ui',
   async main(ctx) {
     logger.info('content script loaded');
-    let stopCurrentScan: (() => void) | undefined;
-    const seekListener = (
-      message: SeekToRequest,
+    let activeScan: ActiveScanControl | undefined;
+    const messageListener = (
+      message: SeekToRequest | FastScanRequest,
       _sender: chrome.runtime.MessageSender,
-      sendResponse: (response: SeekToResponse) => void
+      sendResponse: (response: SeekToResponse | FastScanResponse) => void
     ): boolean => {
+      if (message?.type === FAST_SCAN_MESSAGE_TYPE) {
+        if (!activeScan) {
+          sendResponse({ ok: false, error: 'No active YouTube scan is available.' });
+          return false;
+        }
+
+        const request = message as FastScanRequest;
+        sendResponse(activeScan.setFastScan(request.enabled === true, Number(request.intervalSeconds ?? 2)));
+        return false;
+      }
+
       if (message?.type !== SEEK_TO_MESSAGE_TYPE) return false;
+      const request = message as SeekToRequest;
 
       const adapter = createYouTubeAdapter();
       const video = adapter.getVideoElement();
@@ -59,7 +92,7 @@ export default defineContentScript({
         return false;
       }
 
-      const seconds = typeof message.seconds === 'number' && Number.isFinite(message.seconds) ? message.seconds : null;
+      const seconds = typeof request.seconds === 'number' && Number.isFinite(request.seconds) ? request.seconds : null;
       if (seconds === null) {
         sendResponse({ ok: false, error: 'Invalid seek time.' });
         return false;
@@ -70,11 +103,11 @@ export default defineContentScript({
       return false;
     };
 
-    chrome.runtime.onMessage.addListener(seekListener);
+    chrome.runtime.onMessage.addListener(messageListener);
 
     async function bootForUrl(url: URL): Promise<void> {
-      stopCurrentScan?.();
-      stopCurrentScan = undefined;
+      activeScan?.stop();
+      activeScan = undefined;
 
       const adapter = createYouTubeAdapter();
       if (!adapter.matches(url)) {
@@ -83,32 +116,36 @@ export default defineContentScript({
       }
 
       logger.info('watch page detected', { videoId: adapter.getVideoId() });
-      stopCurrentScan = await startDetectionOnlyScan(adapter);
+      activeScan = await startDetectionOnlyScan(adapter);
     }
 
     await bootForUrl(new URL(location.href));
     const stopRoutes = observeLocationChanges((url) => void bootForUrl(url));
     ctx.addEventListener(window, 'pagehide', () => {
-      stopCurrentScan?.();
+      activeScan?.stop();
       stopRoutes();
-      chrome.runtime.onMessage.removeListener(seekListener);
+      chrome.runtime.onMessage.removeListener(messageListener);
     });
   }
 });
 
-async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAdapter>): Promise<() => void> {
+async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAdapter>): Promise<ActiveScanControl> {
   const statusUi = await adapter.mountStatusUi();
   const evidence: TimedEvidence[] = [];
   let stopped = false;
   let sampleCount = 0;
   let lastCandidateCount = 0;
+  let fastScanEnabled = false;
+  let fastScanIntervalSeconds = 2;
   let stopFrames: (() => void) | undefined;
   let scanStatus = mergeScanStatus(createIdleScanStatus(), {
     platformId: adapter.id,
     videoId: adapter.getVideoId(),
     pageUrl: location.href,
     phase: 'starting',
-    message: 'Starting YapSkippr scan...'
+    message: 'Starting YapSkippr scan...',
+    fastScanEnabled,
+    fastScanIntervalSeconds
   });
 
   function publishScanStatus(
@@ -161,12 +198,22 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
   const video = await waitForVideo(adapter);
   if (!video || stopped) {
     setScanProgress('No playable video found.', 1, 'error', {}, { level: 'error', message: 'No playable video found' });
-    return () => statusUi.destroy();
+    return {
+      stop() {
+        statusUi.destroy();
+      },
+      setFastScan() {
+        return { ok: false, error: 'No playable YouTube video is available.' };
+      }
+    };
   }
+  const playableVideo = video;
 
   publishScanStatus({
-    videoCurrentTimeSeconds: video.currentTime,
-    videoDurationSeconds: getFiniteDuration(video)
+    videoCurrentTimeSeconds: playableVideo.currentTime,
+    videoDurationSeconds: getFiniteDuration(playableVideo),
+    fastScanEnabled,
+    fastScanIntervalSeconds
   });
   setScanProgress('Loading transcript cues...', 0.2, 'transcript', {}, { level: 'info', message: 'Transcript scan started' });
 
@@ -201,84 +248,118 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
       );
     });
 
-  stopFrames = startScreenshotFrameSampler(video, {
-    width: 320,
-    sampleIntervalMs: 1000,
-    async onFrame(frame) {
-      sampleCount += 1;
-      logger.debug('frame sampled', {
-        time: frame.currentTimeSeconds,
-        width: frame.width,
-        height: frame.height
-      });
+  function restartFrameSampling(): void {
+    stopFrames?.();
+    stopFrames = startScreenshotFrameSampler(playableVideo, {
+      width: 320,
+      sampleIntervalMs: fastScanEnabled ? fastScanIntervalSeconds * 1000 : NORMAL_SAMPLE_INTERVAL_MS,
+      async onFrame(frame) {
+        sampleCount += 1;
+        logger.debug('frame sampled', {
+          time: frame.currentTimeSeconds,
+          width: frame.width,
+          height: frame.height
+        });
 
-      const frameEvidence = [...detectProgressBarCue(frame.imageData, frame.currentTimeSeconds)];
-      if (sampleCount % 2 === 0) {
-        frameEvidence.push(...(await detectQrCue(frame.imageData, frame.currentTimeSeconds)));
-      }
+        const frameEvidence = [...detectProgressBarCue(frame.imageData, frame.currentTimeSeconds)];
+        if (sampleCount % 2 === 0) {
+          frameEvidence.push(...(await detectQrCue(frame.imageData, frame.currentTimeSeconds)));
+        }
+        frameEvidence.push(...(await detectVisibleLinkCue(frame.imageData, frame.currentTimeSeconds)));
 
-      if (frameEvidence.length > 0) {
-        evidence.push(...frameEvidence);
-        logger.info('frame evidence detected', frameEvidence);
-        publishCandidates(updateCandidates(evidence, statusUi));
-        publishScanStatus(
-          { evidenceCounts: countEvidenceSources(evidence) },
-          {
-            level: 'info',
-            message: `${frameEvidence.length} frame ${frameEvidence.length === 1 ? 'cue' : 'cues'} found`,
-            detail: summarizeEvidenceSources(frameEvidence)
-          }
-        );
-      }
+        if (frameEvidence.length > 0) {
+          evidence.push(...frameEvidence);
+          logger.info('frame evidence detected', frameEvidence);
+          publishCandidates(updateCandidates(evidence, statusUi));
+          publishScanStatus(
+            { evidenceCounts: countEvidenceSources(evidence) },
+            {
+              level: 'info',
+              message: `${frameEvidence.length} frame ${frameEvidence.length === 1 ? 'cue' : 'cues'} found`,
+              detail: summarizeEvidenceSources(frameEvidence)
+            }
+          );
+        }
 
-      setScanProgress(`Analyzing frames... ${sampleCount} sampled`, Math.min(0.95, 0.35 + sampleCount / 40), 'frames', {
-        sampleCount,
-        videoCurrentTimeSeconds: frame.currentTimeSeconds,
-        videoDurationSeconds: getFiniteDuration(video),
-        evidenceCounts: countEvidenceSources(evidence)
-      });
-    },
-    onError(error) {
-      if (isExtensionContextInvalidatedError(error)) {
-        logger.warn('frame sampling stopped because extension context was invalidated', error.message);
+        setScanProgress(`Analyzing frames... ${sampleCount} sampled`, Math.min(0.95, 0.35 + sampleCount / 40), 'frames', {
+          sampleCount,
+          videoCurrentTimeSeconds: frame.currentTimeSeconds,
+          videoDurationSeconds: getFiniteDuration(playableVideo),
+          fastScanEnabled,
+          fastScanIntervalSeconds,
+          evidenceCounts: countEvidenceSources(evidence)
+        });
+      },
+      onError(error) {
+        if (isExtensionContextInvalidatedError(error)) {
+          logger.warn('frame sampling stopped because extension context was invalidated', error.message);
+          setScanProgress(
+            'Extension reloaded. Reload this YouTube tab to resume frame analysis.',
+            scanStatus.progress,
+            'error',
+            {},
+            { level: 'error', message: 'Extension context invalidated' }
+          );
+          stopFrames?.();
+          return;
+        }
+        if (isCapturePermissionMissingError(error)) {
+          logger.warn('frame sampling stopped because capture permission is missing', error.message);
+          setScanProgress(
+            'Frame capture permission missing. Click the YapSkippr extension icon, grant access, then reload this tab.',
+            scanStatus.progress,
+            'permission',
+            {},
+            { level: 'warn', message: 'Frame capture permission missing', detail: error.message }
+          );
+          stopFrames?.();
+          return;
+        }
+        logger.warn('frame sampling failed', error.message);
         setScanProgress(
-          'Extension reloaded. Reload this YouTube tab to resume frame analysis.',
+          'Frame capture unavailable; transcript scan continues.',
           scanStatus.progress,
           'error',
           {},
-          { level: 'error', message: 'Extension context invalidated' }
+          { level: 'error', message: 'Frame capture failed', detail: error.message }
         );
-        stopFrames?.();
-        return;
       }
-      if (isCapturePermissionMissingError(error)) {
-        logger.warn('frame sampling stopped because capture permission is missing', error.message);
-        setScanProgress(
-          'Frame capture permission missing. Click the YapSkippr extension icon, grant access, then reload this tab.',
-          scanStatus.progress,
-          'permission',
-          {},
-          { level: 'warn', message: 'Frame capture permission missing', detail: error.message }
-        );
-        stopFrames?.();
-        return;
-      }
-      logger.warn('frame sampling failed', error.message);
-      setScanProgress(
-        'Frame capture unavailable; transcript scan continues.',
-        scanStatus.progress,
-        'error',
-        {},
-        { level: 'error', message: 'Frame capture failed', detail: error.message }
-      );
-    }
-  });
+    });
+  }
 
-  return () => {
-    stopped = true;
-    stopFrames?.();
-    publishScanStatus({ phase: 'stopped', message: 'Scan stopped.' }, { level: 'info', message: 'Scan stopped' });
-    statusUi.destroy();
+  restartFrameSampling();
+
+  return {
+    stop() {
+      stopped = true;
+      stopFrames?.();
+      publishScanStatus({ phase: 'stopped', message: 'Scan stopped.' }, { level: 'info', message: 'Scan stopped' });
+      statusUi.destroy();
+    },
+    setFastScan(enabled: boolean, intervalSeconds: number): FastScanResponse {
+      if (stopped) return { ok: false, error: 'Scan is already stopped.' };
+
+      fastScanEnabled = enabled;
+      fastScanIntervalSeconds = clampFastScanIntervalSeconds(intervalSeconds);
+      restartFrameSampling();
+
+      const message = fastScanEnabled
+        ? `Fast pre-scan running every ${fastScanIntervalSeconds}s.`
+        : 'Fast pre-scan stopped; background scan continues every 5s.';
+      setScanProgress(
+        message,
+        scanStatus.progress,
+        'frames',
+        { fastScanEnabled, fastScanIntervalSeconds },
+        {
+          level: 'info',
+          message: fastScanEnabled ? 'Fast pre-scan started' : 'Fast pre-scan stopped',
+          detail: fastScanEnabled ? `${fastScanIntervalSeconds}s frame interval` : '5s frame interval'
+        }
+      );
+
+      return { ok: true, enabled: fastScanEnabled, intervalSeconds: fastScanIntervalSeconds };
+    }
   };
 }
 
@@ -320,9 +401,10 @@ function countEvidenceSources(evidence: TimedEvidence[]): ScanEvidenceCounts {
     if (item.source === 'transcript') counts.transcript += 1;
     if (item.source === 'frame-progress-bar') counts.progressBar += 1;
     if (item.source === 'frame-qr-code') counts.qrCode += 1;
+    if (item.source === 'frame-visible-link') counts.visibleLink += 1;
   }
 
-  counts.total = counts.transcript + counts.progressBar + counts.qrCode;
+  counts.total = counts.transcript + counts.progressBar + counts.qrCode + counts.visibleLink;
   return counts;
 }
 
@@ -337,6 +419,7 @@ function summarizeEvidenceSources(evidence: TimedEvidence[]): string {
 function formatEvidenceSource(source: EvidenceSource): string {
   if (source === 'transcript') return 'transcript';
   if (source === 'frame-qr-code') return 'QR';
+  if (source === 'frame-visible-link') return 'visible link';
   return 'progress bar';
 }
 
@@ -346,4 +429,9 @@ function getFiniteDuration(video: HTMLVideoElement): number | null {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function clampFastScanIntervalSeconds(value: number): number {
+  if (!Number.isFinite(value)) return 2;
+  return Math.min(5, Math.max(1, Math.round(value)));
 }

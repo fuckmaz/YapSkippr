@@ -5,6 +5,7 @@ import { createPopupScanStatusView } from '../../ui/popup-scan-status-view';
 
 const frameCaptureOrigins = ['<all_urls>'];
 const seekToMessageType = 'YAPSKIPPR_SEEK_TO';
+const fastScanMessageType = 'YAPSKIPPR_SET_FAST_SCAN';
 const status = document.querySelector('#status');
 const permissionStatus = document.querySelector('#permission-status');
 const grantAccessButton = document.querySelector<HTMLButtonElement>('#grant-access');
@@ -19,6 +20,10 @@ const scanCandidateCount = document.querySelector('#scan-candidate-count');
 const evidenceTranscript = document.querySelector('#evidence-transcript');
 const evidenceProgress = document.querySelector('#evidence-progress');
 const evidenceQr = document.querySelector('#evidence-qr');
+const evidenceLinks = document.querySelector('#evidence-links');
+const fastScanInterval = document.querySelector<HTMLSelectElement>('#fast-scan-interval');
+const fastScanToggle = document.querySelector<HTMLButtonElement>('#fast-scan-toggle');
+const fastScanStatus = document.querySelector('#fast-scan-status');
 const scanCandidates = document.querySelector<HTMLOListElement>('#scan-candidates');
 const candidateActionStatus = document.querySelector('#candidate-action-status');
 const scanEvents = document.querySelector<HTMLOListElement>('#scan-events');
@@ -36,6 +41,12 @@ scanCandidates?.addEventListener('click', (event) => {
   if (!button || !Number.isFinite(seekSeconds)) return;
 
   void seekActiveTabTo(seekSeconds, button.textContent?.trim() ?? 'candidate');
+});
+
+fastScanToggle?.addEventListener('click', () => {
+  const enable = fastScanToggle.dataset.enabled !== 'true';
+  const intervalSeconds = Number(fastScanInterval?.value ?? 2);
+  void setFastScan(enable, intervalSeconds);
 });
 
 renderScanStatus(createIdleScanStatus());
@@ -69,6 +80,13 @@ function renderScanStatus(statusSnapshot = createIdleScanStatus()): void {
   evidenceTranscript?.replaceChildren(document.createTextNode(view.evidenceItems[0]?.value ?? '0'));
   evidenceProgress?.replaceChildren(document.createTextNode(view.evidenceItems[1]?.value ?? '0'));
   evidenceQr?.replaceChildren(document.createTextNode(view.evidenceItems[2]?.value ?? '0'));
+  evidenceLinks?.replaceChildren(document.createTextNode(view.evidenceItems[3]?.value ?? '0'));
+  fastScanStatus?.replaceChildren(document.createTextNode(view.fastScanText));
+  fastScanToggle?.replaceChildren(document.createTextNode(statusSnapshot.fastScanEnabled ? 'Stop fast pre-scan' : 'Start fast pre-scan'));
+  if (fastScanToggle) fastScanToggle.dataset.enabled = String(statusSnapshot.fastScanEnabled);
+  if (fastScanInterval && document.activeElement !== fastScanInterval) {
+    fastScanInterval.value = String(statusSnapshot.fastScanIntervalSeconds);
+  }
   scanUpdated?.replaceChildren(document.createTextNode(view.updatedText));
 
   scanCandidates?.replaceChildren(
@@ -194,6 +212,27 @@ async function seekActiveTabTo(seconds: number, label: string): Promise<void> {
   }
 }
 
+async function setFastScan(enabled: boolean, intervalSeconds: number): Promise<void> {
+  const safeIntervalSeconds = clampIntervalSeconds(intervalSeconds);
+  setFastScanStatus(`${enabled ? 'Starting' : 'Stopping'} fast pre-scan...`);
+
+  try {
+    const tabId = await getActiveTabId();
+    const response = await sendFastScanMessage(tabId, enabled, safeIntervalSeconds);
+    if (!response.ok) {
+      throw new Error(response.error ?? 'YouTube tab did not accept fast pre-scan settings.');
+    }
+    setFastScanStatus(enabled ? `Fast pre-scan on · ${safeIntervalSeconds}s interval` : 'Fast pre-scan off');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setFastScanStatus(`Fast pre-scan failed: ${message}`);
+  }
+}
+
+function setFastScanStatus(message: string): void {
+  fastScanStatus?.replaceChildren(document.createTextNode(message));
+}
+
 function setCandidateActionStatus(message: string): void {
   candidateActionStatus?.replaceChildren(document.createTextNode(message));
 }
@@ -226,4 +265,26 @@ function sendSeekMessage(tabId: number, seconds: number): Promise<{ ok: boolean;
       resolve(response ?? { ok: false, error: 'No response from YouTube tab.' });
     });
   });
+}
+
+function sendFastScanMessage(tabId: number, enabled: boolean, intervalSeconds: number): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.sendMessage(
+      tabId,
+      { type: fastScanMessageType, enabled, intervalSeconds },
+      (response?: { ok: boolean; error?: string }) => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          reject(new Error(error.message));
+          return;
+        }
+        resolve(response ?? { ok: false, error: 'No response from YouTube tab.' });
+      }
+    );
+  });
+}
+
+function clampIntervalSeconds(value: number): number {
+  if (!Number.isFinite(value)) return 2;
+  return Math.min(5, Math.max(1, Math.round(value)));
 }
