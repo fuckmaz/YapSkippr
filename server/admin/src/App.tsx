@@ -107,6 +107,16 @@ interface Summary {
   modelPerformance: Record<string, number>;
 }
 
+interface VideoSummaryRow {
+  videoId: string;
+  url: string | null;
+  feedback: number;
+  pending: number;
+  reviewed: number;
+  sources: Set<string>;
+  latestReceivedAt: string;
+}
+
 interface DashboardData {
   summary: Summary | null;
   feedback: FeedbackRecord[];
@@ -426,15 +436,61 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
 
 function FeedbackTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
   const [query, setQuery] = useState('');
-  const filtered = items.filter((item) => JSON.stringify(item).toLowerCase().includes(query.toLowerCase()));
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [reviewFilter, setReviewFilter] = useState('all');
+  const [sort, setSort] = useState('received-desc');
+  const sources = useMemo(() => uniqueSources(items), [items]);
+  const filtered = useMemo(() => {
+    return items
+      .filter((item) => matchesQuery(item, query))
+      .filter((item) => sourceFilter === 'all' || feedbackSource(item) === sourceFilter)
+      .filter((item) => {
+        if (reviewFilter === 'all') return true;
+        if (reviewFilter === 'pending') return !item.review;
+        return Boolean(item.review);
+      })
+      .sort((a, b) => compareFeedback(a, b, sort));
+  }, [items, query, reviewFilter, sort, sourceFilter]);
+
   return (
     <section className="page-grid">
       <PageTitle title="Feedback" description="Search, filter, and inspect submitted feedback payloads." />
-      <label className="inline-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search feedback..." /></label>
-      <DataTable columns={['Received', 'Video', 'Source', 'Timecode', 'Heuristic', 'Model', 'Review']} rows={filtered.map((item) => [
+      <div className="table-toolbar">
+        <label className="inline-search">
+          <Search size={16} />
+          <input aria-label="Search feedback" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search feedback..." />
+        </label>
+        <label className="filter-control">
+          <span>Source</span>
+          <select aria-label="Feedback source filter" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
+            <option value="all">All sources</option>
+            {sources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
+          </select>
+        </label>
+        <label className="filter-control">
+          <span>Review</span>
+          <select aria-label="Feedback review filter" value={reviewFilter} onChange={(event) => setReviewFilter(event.target.value)}>
+            <option value="all">All reviews</option>
+            <option value="pending">Pending only</option>
+            <option value="reviewed">Reviewed only</option>
+          </select>
+        </label>
+        <label className="filter-control">
+          <span>Sort</span>
+          <select aria-label="Feedback sort" value={sort} onChange={(event) => setSort(event.target.value)}>
+            <option value="received-desc">Newest first</option>
+            <option value="received-asc">Oldest first</option>
+            <option value="model-desc">Model confidence</option>
+            <option value="heuristic-desc">Heuristic confidence</option>
+            <option value="time-asc">Earliest timecode</option>
+          </select>
+        </label>
+      </div>
+      <DataTable columns={['Received', 'Video', 'Occurrence', 'Source', 'Timecode', 'Heuristic', 'Model', 'Review']} rows={filtered.map((item) => [
         timeAgo(item.receivedAt),
         item.payload.videoId ?? 'unknown',
-        item.payload.source ?? item.payload.occurrenceType,
+        item.payload.occurrenceId,
+        sourceLabel(feedbackSource(item)),
         formatTime(item.payload.startSeconds),
         formatPercent(item.payload.heuristicConfidence),
         formatPercent(item.payload.modelConfidence),
@@ -445,34 +501,92 @@ function FeedbackTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
 }
 
 function VideosTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
+  const [query, setQuery] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [sort, setSort] = useState('feedback-desc');
+  const sources = useMemo(() => uniqueSources(items), [items]);
   const videos = useMemo(() => {
-    const map = new Map<string, { videoId: string; url: string | null; feedback: number; pending: number; sources: Set<string> }>();
+    const map = new Map<string, VideoSummaryRow>();
     for (const item of items) {
       const id = item.payload.videoId ?? 'unknown';
-      const entry = map.get(id) ?? { videoId: id, url: item.payload.videoUrl, feedback: 0, pending: 0, sources: new Set<string>() };
+      const entry = map.get(id) ?? {
+        videoId: id,
+        url: item.payload.videoUrl,
+        feedback: 0,
+        pending: 0,
+        reviewed: 0,
+        sources: new Set<string>(),
+        latestReceivedAt: item.receivedAt
+      };
       entry.feedback += 1;
       if (!item.review) entry.pending += 1;
-      entry.sources.add(item.payload.source ?? item.payload.occurrenceType);
+      else entry.reviewed += 1;
+      entry.sources.add(feedbackSource(item));
+      if (new Date(item.receivedAt).getTime() > new Date(entry.latestReceivedAt).getTime()) entry.latestReceivedAt = item.receivedAt;
       map.set(id, entry);
     }
-    return [...map.values()];
-  }, [items]);
+    return [...map.values()]
+      .filter((video) => matchesQuery({ videoId: video.videoId, url: video.url, sources: [...video.sources] }, query))
+      .filter((video) => sourceFilter === 'all' || video.sources.has(sourceFilter))
+      .sort((a, b) => compareVideos(a, b, sort));
+  }, [items, query, sort, sourceFilter]);
+
+  const videoRows = videos.map((video) => [
+    video.videoId,
+    video.feedback,
+    video.pending,
+    video.reviewed,
+    [...video.sources].map(sourceLabel).join(', '),
+    timeAgo(video.latestReceivedAt),
+    video.url ? <a href={video.url} target="_blank" rel="noreferrer">Open</a> : '-'
+  ]);
 
   return (
     <section className="page-grid">
       <PageTitle title="Videos" description="Feedback grouped by YouTube video for source and queue analysis." />
-      <DataTable columns={['Video ID', 'Feedback', 'Pending', 'Sources', 'URL']} rows={videos.map((video) => [
-        video.videoId,
-        video.feedback,
-        video.pending,
-        [...video.sources].join(', '),
-        video.url ? <a href={video.url} target="_blank" rel="noreferrer">Open</a> : '-'
-      ])} />
+      <div className="table-toolbar">
+        <label className="inline-search">
+          <Search size={16} />
+          <input aria-label="Search videos" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search videos..." />
+        </label>
+        <label className="filter-control">
+          <span>Source</span>
+          <select aria-label="Video source filter" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
+            <option value="all">All sources</option>
+            {sources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
+          </select>
+        </label>
+        <label className="filter-control">
+          <span>Sort</span>
+          <select aria-label="Video sort" value={sort} onChange={(event) => setSort(event.target.value)}>
+            <option value="feedback-desc">Most feedback</option>
+            <option value="pending-desc">Most pending</option>
+            <option value="reviewed-desc">Most reviewed</option>
+            <option value="recent-desc">Recently reported</option>
+            <option value="video-asc">Video ID</option>
+          </select>
+        </label>
+      </div>
+      <DataTable columns={['Video ID', 'Feedback', 'Pending', 'Reviewed', 'Sources', 'Latest', 'URL']} rows={videoRows} />
     </section>
   );
 }
 
 function ModelsPage({ token, models, promoted, onRefresh }: { token: string; models: ModelArtifact[]; promoted: ModelArtifact | null; onRefresh: () => Promise<void> }): JSX.Element {
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sort, setSort] = useState('created-desc');
+  const visibleModels = useMemo(() => {
+    return models
+      .filter((model) => matchesQuery(model, query))
+      .filter((model) => {
+        if (statusFilter === 'all') return true;
+        const isPromoted = promoted?.modelId === model.modelId;
+        return statusFilter === 'promoted' ? isPromoted : !isPromoted;
+      })
+      .sort((a, b) => compareModels(a, b, sort, promoted?.modelId));
+  }, [models, promoted?.modelId, query, sort, statusFilter]);
+
   async function promote(id: string): Promise<void> {
     await api(`/admin/models/${id}/promote`, token, { method: 'POST' });
     await onRefresh();
@@ -486,7 +600,32 @@ function ModelsPage({ token, models, promoted, onRefresh }: { token: string; mod
   return (
     <section className="page-grid">
       <PageTitle title="Models" description="Inspect artifacts, metrics, promotion state, and rollback history." />
-      <DataTable columns={['Version', 'Status', 'Accuracy', 'F1', 'AUC', 'Examples', 'Actions']} rows={models.map((model) => [
+      <div className="table-toolbar">
+        <label className="inline-search">
+          <Search size={16} />
+          <input aria-label="Search models" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search models..." />
+        </label>
+        <label className="filter-control">
+          <span>Status</span>
+          <select aria-label="Model status filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="all">All models</option>
+            <option value="promoted">Promoted</option>
+            <option value="draft">Drafts</option>
+          </select>
+        </label>
+        <label className="filter-control">
+          <span>Sort</span>
+          <select aria-label="Model sort" value={sort} onChange={(event) => setSort(event.target.value)}>
+            <option value="created-desc">Newest first</option>
+            <option value="f1-desc">Best F1</option>
+            <option value="accuracy-desc">Best accuracy</option>
+            <option value="examples-desc">Most examples</option>
+            <option value="version-asc">Version</option>
+          </select>
+        </label>
+      </div>
+      <DataTable columns={['Model', 'Version', 'Status', 'Accuracy', 'F1', 'AUC', 'Examples', 'Actions']} rows={visibleModels.map((model) => [
+        <code>{model.modelId}</code>,
         model.modelVersion,
         promoted?.modelId === model.modelId ? <span className="status positive">Promoted</span> : <span className="status">Draft</span>,
         formatMetric(model.metrics.accuracy),
@@ -530,6 +669,56 @@ function TrainingPage({ token, runs, onRefresh }: { token: string; runs: Trainin
       ])} />
     </section>
   );
+}
+
+function feedbackSource(item: FeedbackRecord): string {
+  return item.payload.source ?? item.payload.occurrenceType ?? 'unknown';
+}
+
+function uniqueSources(items: readonly FeedbackRecord[]): string[] {
+  return [...new Set(items.map(feedbackSource))].sort((a, b) => sourceLabel(a).localeCompare(sourceLabel(b)));
+}
+
+function sourceLabel(source: string): string {
+  const labels: Record<string, string> = {
+    transcript: 'Transcript',
+    'frame-visible-link': 'Visible links',
+    'frame-qr-code': 'QR codes',
+    'frame-progress-bar': 'Progress bars'
+  };
+  return labels[source] ?? source.replace(/-/g, ' ');
+}
+
+function matchesQuery(value: unknown, query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  return JSON.stringify(value).toLowerCase().includes(normalized);
+}
+
+function compareFeedback(a: FeedbackRecord, b: FeedbackRecord, sort: string): number {
+  if (sort === 'received-asc') return dateValue(a.receivedAt) - dateValue(b.receivedAt);
+  if (sort === 'model-desc') return numberValue(b.payload.modelConfidence) - numberValue(a.payload.modelConfidence) || compareFeedback(a, b, 'received-desc');
+  if (sort === 'heuristic-desc') return numberValue(b.payload.heuristicConfidence) - numberValue(a.payload.heuristicConfidence) || compareFeedback(a, b, 'received-desc');
+  if (sort === 'time-asc') return a.payload.startSeconds - b.payload.startSeconds || compareFeedback(a, b, 'received-desc');
+  return dateValue(b.receivedAt) - dateValue(a.receivedAt);
+}
+
+function compareVideos(a: VideoSummaryRow, b: VideoSummaryRow, sort: string): number {
+  if (sort === 'pending-desc') return b.pending - a.pending || a.videoId.localeCompare(b.videoId);
+  if (sort === 'reviewed-desc') return b.reviewed - a.reviewed || a.videoId.localeCompare(b.videoId);
+  if (sort === 'recent-desc') return dateValue(b.latestReceivedAt) - dateValue(a.latestReceivedAt) || a.videoId.localeCompare(b.videoId);
+  if (sort === 'video-asc') return a.videoId.localeCompare(b.videoId);
+  return b.feedback - a.feedback || a.videoId.localeCompare(b.videoId);
+}
+
+function compareModels(a: ModelArtifact, b: ModelArtifact, sort: string, promotedId: string | undefined): number {
+  const promotedFirst = Number(b.modelId === promotedId) - Number(a.modelId === promotedId);
+  if (promotedFirst !== 0) return promotedFirst;
+  if (sort === 'f1-desc') return numberValue(b.metrics.f1) - numberValue(a.metrics.f1) || compareModels(a, b, 'created-desc', promotedId);
+  if (sort === 'accuracy-desc') return numberValue(b.metrics.accuracy) - numberValue(a.metrics.accuracy) || compareModels(a, b, 'created-desc', promotedId);
+  if (sort === 'examples-desc') return numberValue(b.trainingSetSummary.examples) - numberValue(a.trainingSetSummary.examples) || compareModels(a, b, 'created-desc', promotedId);
+  if (sort === 'version-asc') return a.modelVersion.localeCompare(b.modelVersion);
+  return dateValue(b.createdAt) - dateValue(a.createdAt);
 }
 
 function PageTitle({ title, description }: { title: string; description: string }): JSX.Element {
@@ -719,8 +908,9 @@ function useThemePreference(): [ThemePreference, (value: ThemePreference) => voi
 }
 
 async function api<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
+  const hasBody = init.body !== undefined && init.body !== null;
   const headers = {
-    'content-type': 'application/json',
+    ...(hasBody ? { 'content-type': 'application/json' } : {}),
     ...(token ? { 'x-admin-token': token } : {}),
     ...(init.headers ?? {})
   };
@@ -754,6 +944,15 @@ function formatPercent(value: number | undefined): string {
 
 function formatMetric(value: number | undefined): string {
   return value === undefined ? '-' : value.toFixed(3);
+}
+
+function numberValue(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : -1;
+}
+
+function dateValue(iso: string): number {
+  const value = new Date(iso).getTime();
+  return Number.isFinite(value) ? value : 0;
 }
 
 function timeAgo(iso: string): string {

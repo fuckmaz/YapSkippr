@@ -197,6 +197,13 @@ nav em {
   color: var(--muted);
 }
 
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .search-field {
   width: min(560px, 100%);
   padding: 0 13px;
@@ -215,6 +222,30 @@ nav em {
   outline: 0;
   background: transparent;
   color: var(--text);
+}
+
+.filter-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.filter-control span {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.filter-control select {
+  min-height: 30px;
+  border-color: transparent;
+  background: transparent;
 }
 
 .topbar-actions {
@@ -680,6 +711,15 @@ th {
 
 td {
   color: var(--text);
+}
+
+td code {
+  display: inline-block;
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--green);
+  text-overflow: ellipsis;
+  vertical-align: bottom;
 }
 
 tr:last-child td {

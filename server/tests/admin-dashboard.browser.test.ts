@@ -30,7 +30,7 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await app?.close();
   });
 
-  test('logs in, renders overview metrics, toggles theme, and advances review queue', async () => {
+  test('logs in, renders overview metrics, explores data, trains a model, and advances review queue', async () => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.goto(`${baseUrl}/admin`);
 
@@ -55,12 +55,63 @@ describe('YapSkippr admin dashboard browser workflow', () => {
 
     await page.getByRole('button', { name: 'Review Queue' }).click();
     await expectVisible(page, page.getByText('2', { exact: true }).first());
+    const positiveReviewResponse = page.waitForResponse((response) => response.url().includes('/admin/feedback/') && response.url().endsWith('/review'));
     await page.getByRole('button', { name: 'Positive', exact: true }).click();
+    const positiveReview = await positiveReviewResponse;
+    expect(positiveReview.status()).toBe(200);
     await expectVisible(page, page.getByText('1', { exact: true }).first());
     await expectVisible(page, page.locator('.recent-list').getByText('Positive'));
 
+    await page.getByRole('button', { name: 'Feedback' }).click();
+    await page.getByLabel('Search feedback').fill('candidate-link');
+    await expectVisible(page, page.getByRole('cell', { name: 'video-b' }));
+    expect(await page.getByRole('cell', { name: 'video-a' }).count()).toBe(0);
+    await page.getByLabel('Search feedback').fill('');
+    await page.getByLabel('Feedback source filter').selectOption('frame-visible-link');
+    await expectVisible(page, page.getByRole('cell', { name: 'video-b' }));
+    expect(await page.getByRole('cell', { name: 'video-a' }).count()).toBe(0);
+    await page.getByLabel('Feedback source filter').selectOption('all');
+    await page.getByLabel('Feedback review filter').selectOption('reviewed');
+    await expectVisible(page, page.getByText('positive'));
+    expect(await page.locator('.table-wrap tbody').getByText('Pending').count()).toBe(0);
+    await page.getByLabel('Feedback review filter').selectOption('all');
+    await page.getByLabel('Feedback sort').selectOption('model-desc');
+    expect(await page.locator('tbody tr').first().innerText()).toContain('video-a');
+
+    await page.getByRole('button', { name: 'Videos' }).click();
+    await page.getByLabel('Search videos').fill('video-b');
+    await expectVisible(page, page.getByRole('cell', { name: 'video-b' }));
+    expect(await page.getByRole('cell', { name: 'video-a' }).count()).toBe(0);
+    await page.getByLabel('Search videos').fill('');
+    await page.getByLabel('Video source filter').selectOption('frame-visible-link');
+    await expectVisible(page, page.getByRole('cell', { name: 'video-b' }));
+    expect(await page.getByRole('cell', { name: 'video-a' }).count()).toBe(0);
+
+    await page.getByRole('button', { name: 'Review Queue' }).click();
+    const negativeReviewResponse = page.waitForResponse((response) => response.url().includes('/admin/feedback/') && response.url().endsWith('/review'));
+    await page.getByRole('button', { name: 'False positive', exact: true }).click();
+    const negativeReview = await negativeReviewResponse;
+    expect(negativeReview.status()).toBe(200);
+    await expectVisible(page, page.locator('.queue-number').getByText('0', { exact: true }));
+    await expectVisible(page, page.getByText('Queue clear'));
+
+    await page.getByRole('button', { name: 'Training' }).click();
+    const trainResponse = page.waitForResponse((response) => response.url().endsWith('/admin/models/train'));
+    await page.getByRole('button', { name: 'Train model' }).click();
+    const trained = await trainResponse;
+    expect(trained.status()).toBe(201);
+    await expectVisible(page, page.getByRole('cell', { name: 'completed' }));
+
+    await page.getByRole('button', { name: 'Models' }).click();
+    await page.getByLabel('Search models').fill('model_');
+    await expectVisible(page, page.getByText('model_', { exact: false }));
+    await page.getByLabel('Model status filter').selectOption('draft');
+    await expectVisible(page, page.getByRole('cell', { name: 'Draft' }));
+    await page.getByLabel('Model sort').selectOption('f1-desc');
+    await expectVisible(page, page.getByRole('columnheader', { name: 'F1' }));
+
     await page.close();
-  });
+  }, 60_000);
 });
 
 async function seedFeedback(
