@@ -95,6 +95,19 @@ interface TrainingRun {
   status: string;
 }
 
+interface PromotionRecord {
+  id: string;
+  modelId: string;
+  promotedAt: string;
+  action: 'promote' | 'rollback';
+}
+
+interface ModelEvaluation {
+  modelId: string;
+  metrics: Record<string, number>;
+  trainingSetSummary: Record<string, number>;
+}
+
 interface Summary {
   totalFeedback: number;
   reviewedFeedback: number;
@@ -122,6 +135,7 @@ interface DashboardData {
   feedback: FeedbackRecord[];
   models: ModelArtifact[];
   promoted: ModelArtifact | null;
+  promotionHistory: PromotionRecord[];
   trainingRuns: TrainingRun[];
 }
 
@@ -146,6 +160,7 @@ export function App(): JSX.Element {
     feedback: [],
     models: [],
     promoted: null,
+    promotionHistory: [],
     trainingRuns: []
   });
   const [loading, setLoading] = useState(false);
@@ -160,7 +175,7 @@ export function App(): JSX.Element {
       const [summary, feedback, models, training] = await Promise.all([
         api<Summary>('/admin/api/summary', token),
         api<{ items: FeedbackRecord[] }>('/admin/api/feedback', token),
-        api<{ items: ModelArtifact[]; promoted: ModelArtifact | null }>('/admin/api/models', token),
+        api<{ items: ModelArtifact[]; promoted: ModelArtifact | null; history: PromotionRecord[] }>('/admin/api/models', token),
         api<{ items: TrainingRun[] }>('/admin/api/training-runs', token)
       ]);
       setData({
@@ -168,6 +183,7 @@ export function App(): JSX.Element {
         feedback: feedback.items,
         models: models.items,
         promoted: models.promoted,
+        promotionHistory: models.history,
         trainingRuns: training.items
       });
     } catch (requestError) {
@@ -257,7 +273,7 @@ export function App(): JSX.Element {
             {page === 'review' ? <ReviewQueue token={token} data={data} onRefresh={refresh} /> : null}
             {page === 'feedback' ? <FeedbackTable items={data.feedback} /> : null}
             {page === 'videos' ? <VideosTable items={data.feedback} /> : null}
-            {page === 'models' ? <ModelsPage token={token} models={data.models} promoted={data.promoted} onRefresh={refresh} /> : null}
+            {page === 'models' ? <ModelsPage token={token} models={data.models} promoted={data.promoted} history={data.promotionHistory} onRefresh={refresh} /> : null}
             {page === 'training' ? <TrainingPage token={token} runs={data.trainingRuns} onRefresh={refresh} /> : null}
           </>
         ) : null}
@@ -572,10 +588,24 @@ function VideosTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
   );
 }
 
-function ModelsPage({ token, models, promoted, onRefresh }: { token: string; models: ModelArtifact[]; promoted: ModelArtifact | null; onRefresh: () => Promise<void> }): JSX.Element {
+function ModelsPage({
+  token,
+  models,
+  promoted,
+  history,
+  onRefresh
+}: {
+  token: string;
+  models: ModelArtifact[];
+  promoted: ModelArtifact | null;
+  history: PromotionRecord[];
+  onRefresh: () => Promise<void>;
+}): JSX.Element {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sort, setSort] = useState('created-desc');
+  const [selectedEvaluation, setSelectedEvaluation] = useState<{ model: ModelArtifact; evaluation: ModelEvaluation } | null>(null);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
   const visibleModels = useMemo(() => {
     return models
       .filter((model) => matchesQuery(model, query))
@@ -587,14 +617,34 @@ function ModelsPage({ token, models, promoted, onRefresh }: { token: string; mod
       .sort((a, b) => compareModels(a, b, sort, promoted?.modelId));
   }, [models, promoted?.modelId, query, sort, statusFilter]);
 
+  async function inspect(model: ModelArtifact): Promise<void> {
+    setBusyAction(`inspect:${model.modelId}`);
+    try {
+      const evaluation = await api<ModelEvaluation>(`/admin/models/${model.modelId}/evaluation`, token);
+      setSelectedEvaluation({ model, evaluation });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function promote(id: string): Promise<void> {
-    await api(`/admin/models/${id}/promote`, token, { method: 'POST' });
-    await onRefresh();
+    setBusyAction(`promote:${id}`);
+    try {
+      await api(`/admin/models/${id}/promote`, token, { method: 'POST' });
+      await onRefresh();
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   async function rollback(id: string): Promise<void> {
-    await api(`/admin/models/${id}/rollback`, token, { method: 'POST' });
-    await onRefresh();
+    setBusyAction(`rollback:${id}`);
+    try {
+      await api(`/admin/models/${id}/rollback`, token, { method: 'POST' });
+      await onRefresh();
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   return (
@@ -633,11 +683,79 @@ function ModelsPage({ token, models, promoted, onRefresh }: { token: string; mod
         formatMetric(model.metrics.auc),
         model.trainingSetSummary.examples ?? 0,
         <div className="table-actions">
-          <button type="button" onClick={() => void promote(model.modelId)}>Promote</button>
-          <button type="button" onClick={() => void rollback(model.modelId)}>Rollback</button>
+          <button type="button" aria-label="Inspect model" onClick={() => void inspect(model)} disabled={busyAction !== null}>
+            {busyAction === `inspect:${model.modelId}` ? <Loader2 size={14} className="spin" /> : <Eye size={14} />} Inspect
+          </button>
+          <button type="button" onClick={() => void promote(model.modelId)} disabled={busyAction !== null || promoted?.modelId === model.modelId}>
+            {busyAction === `promote:${model.modelId}` ? <Loader2 size={14} className="spin" /> : <CheckCircle2 size={14} />} Promote
+          </button>
+          <button type="button" onClick={() => void rollback(model.modelId)} disabled={busyAction !== null || promoted?.modelId !== model.modelId}>
+            {busyAction === `rollback:${model.modelId}` ? <Loader2 size={14} className="spin" /> : <TimerReset size={14} />} Rollback
+          </button>
         </div>
       ])} />
+      {selectedEvaluation ? <ModelEvaluationPanel model={selectedEvaluation.model} evaluation={selectedEvaluation.evaluation} /> : null}
+      <div className="promotion-history">
+        <Panel title="Promotion History">
+          {history.length ? (
+            <div className="history-list">
+              {history.slice(0, 8).map((entry) => (
+                <div key={entry.id} className="history-row">
+                  <LabelBadge label={entry.action} />
+                  <code>{entry.modelId}</code>
+                  <span>{timeAgo(entry.promotedAt)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="No promotions yet" detail="Promoted and rolled back model versions will appear here." />
+          )}
+        </Panel>
+      </div>
     </section>
+  );
+}
+
+function ModelEvaluationPanel({ model, evaluation }: { model: ModelArtifact; evaluation: ModelEvaluation }): JSX.Element {
+  const weights = Object.entries(model.weights)
+    .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
+    .slice(0, 10);
+  const summary = Object.entries(evaluation.trainingSetSummary);
+
+  return (
+    <Panel title="Model Evaluation">
+      <div className="evaluation-head">
+        <div>
+          <span>Model</span>
+          <code>{evaluation.modelId}</code>
+        </div>
+        <MetricStrip metrics={evaluation.metrics} />
+      </div>
+      <div className="model-detail-grid">
+        <section>
+          <h3>Feature weights</h3>
+          <div className="weight-list">
+            {weights.map(([feature, weight]) => (
+              <div key={feature}>
+                <span>{feature}</span>
+                <strong data-direction={weight >= 0 ? 'positive' : 'negative'}>{formatSignedMetric(weight)}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+        <section>
+          <h3>Training summary</h3>
+          <div className="summary-list">
+            {summary.map(([key, value]) => (
+              <div key={key}>
+                <span>{key}</span>
+                <strong>{formatMetric(value)}</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    </Panel>
   );
 }
 
@@ -944,6 +1062,11 @@ function formatPercent(value: number | undefined): string {
 
 function formatMetric(value: number | undefined): string {
   return value === undefined ? '-' : value.toFixed(3);
+}
+
+function formatSignedMetric(value: number | undefined): string {
+  if (value === undefined) return '-';
+  return `${value >= 0 ? '+' : ''}${value.toFixed(3)}`;
 }
 
 function numberValue(value: number | undefined): number {

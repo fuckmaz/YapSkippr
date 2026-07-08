@@ -109,6 +109,21 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.getByRole('cell', { name: 'Draft' }));
     await page.getByLabel('Model sort').selectOption('f1-desc');
     await expectVisible(page, page.getByRole('columnheader', { name: 'F1' }));
+    await page.getByLabel('Model status filter').selectOption('all');
+
+    const evaluationResponse = page.waitForResponse((response) => response.url().includes('/admin/models/') && response.url().endsWith('/evaluation'));
+    await page.getByRole('button', { name: 'Inspect model' }).click();
+    expect((await evaluationResponse).status()).toBe(200);
+    await expectVisible(page, page.getByRole('heading', { name: 'Model Evaluation' }));
+    await expectVisible(page, page.getByText('Feature weights'));
+    await expectVisible(page, page.getByText('Training summary'));
+
+    const promoteResponse = page.waitForResponse((response) => response.url().includes('/admin/models/') && response.url().endsWith('/promote'));
+    await page.getByRole('button', { name: 'Promote' }).click();
+    expect((await promoteResponse).status()).toBe(200);
+    await expectVisible(page, page.getByRole('cell', { name: 'Promoted' }));
+    await expectVisible(page, page.getByRole('heading', { name: 'Promotion History' }));
+    await expectVisible(page, page.locator('.promotion-history').getByText('promote'));
 
     await page.close();
   }, 60_000);
