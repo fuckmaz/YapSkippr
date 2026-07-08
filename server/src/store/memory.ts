@@ -53,9 +53,13 @@ export function createMemoryRepository(now: () => string = () => new Date().toIS
       record.review = review;
 
       const trainingLabel = toTrainingLabel(label);
+      for (let index = trainingExamples.length - 1; index >= 0; index -= 1) {
+        if (trainingExamples[index]?.feedbackId === id) trainingExamples.splice(index, 1);
+      }
       if (trainingLabel !== null && record.payload.candidateFeatures) {
         trainingExamples.push({
           id: nextId('example'),
+          feedbackId: id,
           videoId: record.payload.videoId,
           occurrenceId: record.payload.occurrenceId,
           label: trainingLabel,

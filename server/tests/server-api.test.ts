@@ -155,4 +155,46 @@ describe('YapSkippr server API', () => {
 
     await app.close();
   });
+
+  test('re-reviewing feedback replaces its training example instead of duplicating stale labels', async () => {
+    const app = await buildServer({ adminToken: 'secret' });
+
+    const feedback = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({ occurrenceId: 'candidate-relabel', videoId: 'video-a' })
+    });
+    expect(feedback.statusCode).toBe(201);
+    const feedbackId = feedback.json().feedbackId;
+
+    const firstReview = await app.inject({
+      method: 'POST',
+      url: `/admin/feedback/${feedbackId}/review`,
+      headers: { 'x-admin-token': 'secret' },
+      payload: { label: 'positive' }
+    });
+    expect(firstReview.statusCode).toBe(200);
+
+    const secondReview = await app.inject({
+      method: 'POST',
+      url: `/admin/feedback/${feedbackId}/review`,
+      headers: { 'x-admin-token': 'secret' },
+      payload: { label: 'false_positive' }
+    });
+    expect(secondReview.statusCode).toBe(200);
+
+    const train = await app.inject({
+      method: 'POST',
+      url: '/admin/models/train',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    expect(train.statusCode).toBe(201);
+    expect(train.json().model.trainingSetSummary).toMatchObject({
+      examples: 1,
+      positives: 0,
+      negatives: 1
+    });
+
+    await app.close();
+  });
 });

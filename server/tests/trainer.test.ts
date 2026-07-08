@@ -6,6 +6,7 @@ test('trains deterministic JSON model artifacts from labeled fixtures', () => {
   const examples = [
     {
       id: 'example-1',
+      feedbackId: 'feedback-1',
       videoId: 'video-a',
       occurrenceId: 'candidate-positive',
       label: 1,
@@ -13,6 +14,7 @@ test('trains deterministic JSON model artifacts from labeled fixtures', () => {
     },
     {
       id: 'example-2',
+      feedbackId: 'feedback-2',
       videoId: 'video-b',
       occurrenceId: 'candidate-negative',
       label: 0,

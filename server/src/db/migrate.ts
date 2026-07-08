@@ -54,6 +54,15 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
       create index if not exists training_examples_feedback_id_idx on training_examples (feedback_id);
       create index if not exists promotion_history_promoted_at_idx on promotion_history (promoted_at desc);
     `);
+    await pool.query(`
+      delete from training_examples stale
+      using training_examples latest
+      where stale.feedback_id = latest.feedback_id
+        and (stale.created_at, stale.id) < (latest.created_at, latest.id);
+
+      create unique index if not exists training_examples_feedback_id_unique_idx
+        on training_examples (feedback_id);
+    `);
   } finally {
     await pool.end();
   }

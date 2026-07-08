@@ -13,6 +13,7 @@ export interface CandidateModelArtifact {
 
 export interface LabeledTrainingExample {
   id: string;
+  feedbackId: string;
   videoId: string | null;
   occurrenceId: string;
   label: 0 | 1;

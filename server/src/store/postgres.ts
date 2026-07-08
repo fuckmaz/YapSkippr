@@ -65,9 +65,10 @@ export function createPostgresRepository(databaseUrl: string): YapSkipprReposito
     },
 
     async listTrainingExamples() {
-      const result = await pool.query('select id, video_id, occurrence_id, label, features from training_examples order by created_at asc');
+      const result = await pool.query('select id, feedback_id, video_id, occurrence_id, label, features from training_examples order by created_at asc');
       return result.rows.map((row): LabeledTrainingExample => ({
         id: row.id,
+        feedbackId: row.feedback_id,
         videoId: row.video_id,
         occurrenceId: row.occurrence_id,
         label: row.label,
@@ -215,6 +216,7 @@ async function insertTrainingExampleIfUseful(
   feedbackId: string,
   label: ReviewLabel
 ): Promise<void> {
+  await client.query('delete from training_examples where feedback_id = $1', [feedbackId]);
   const trainingLabel = toTrainingLabel(label);
   if (trainingLabel === null || !payload.candidateFeatures) return;
   await client.query(
