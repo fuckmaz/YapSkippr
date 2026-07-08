@@ -96,6 +96,11 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   app.post('/admin/models/train', { preHandler: requireAdmin(adminToken) }, async (_request, reply) => {
     const examples = await repository.listTrainingExamples();
     if (examples.length === 0) return reply.status(400).send({ ok: false, error: 'No reviewed training examples are available.' });
+    const positives = examples.filter((example) => example.label === 1).length;
+    const negatives = examples.length - positives;
+    if (positives === 0 || negatives === 0) {
+      return reply.status(400).send({ ok: false, error: 'Training requires at least one positive and one negative reviewed example.' });
+    }
     const model = trainLogisticModel(examples);
     await repository.saveModel(model);
     const run = await repository.createTrainingRun(model);

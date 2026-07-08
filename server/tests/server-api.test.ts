@@ -185,6 +185,20 @@ describe('YapSkippr server API', () => {
     });
     expect(secondReview.statusCode).toBe(200);
 
+    const positive = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({ occurrenceId: 'candidate-positive-peer', videoId: 'video-b' })
+    });
+    expect(positive.statusCode).toBe(201);
+    const positiveReview = await app.inject({
+      method: 'POST',
+      url: `/admin/feedback/${positive.json().feedbackId}/review`,
+      headers: { 'x-admin-token': 'secret' },
+      payload: { label: 'positive' }
+    });
+    expect(positiveReview.statusCode).toBe(200);
+
     const train = await app.inject({
       method: 'POST',
       url: '/admin/models/train',
@@ -192,9 +206,41 @@ describe('YapSkippr server API', () => {
     });
     expect(train.statusCode).toBe(201);
     expect(train.json().model.trainingSetSummary).toMatchObject({
-      examples: 1,
-      positives: 0,
+      examples: 2,
+      positives: 1,
       negatives: 1
+    });
+
+    await app.close();
+  });
+
+  test('requires both positive and negative reviewed examples before training', async () => {
+    const app = await buildServer({ adminToken: 'secret' });
+
+    const feedback = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({ occurrenceId: 'candidate-positive-only', videoId: 'video-a' })
+    });
+    expect(feedback.statusCode).toBe(201);
+
+    const review = await app.inject({
+      method: 'POST',
+      url: `/admin/feedback/${feedback.json().feedbackId}/review`,
+      headers: { 'x-admin-token': 'secret' },
+      payload: { label: 'positive' }
+    });
+    expect(review.statusCode).toBe(200);
+
+    const train = await app.inject({
+      method: 'POST',
+      url: '/admin/models/train',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    expect(train.statusCode).toBe(400);
+    expect(train.json()).toMatchObject({
+      ok: false,
+      error: 'Training requires at least one positive and one negative reviewed example.'
     });
 
     await app.close();
