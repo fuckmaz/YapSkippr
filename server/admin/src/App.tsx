@@ -342,6 +342,7 @@ function Overview({ data, onPageChange }: { data: DashboardData; onPageChange: (
 function ReviewQueue({ token, data, onRefresh }: { token: string; data: DashboardData; onRefresh: () => Promise<void> }): JSX.Element {
   const [selectedSource, setSelectedSource] = useState('all');
   const [busyLabel, setBusyLabel] = useState<ReviewLabel | null>(null);
+  const [reviewNotes, setReviewNotes] = useState('');
   const pending = data.feedback.filter((item) => !item.review && (selectedSource === 'all' || item.payload.source === selectedSource));
   const current = pending[0];
   const recent = data.feedback.filter((item) => item.review).slice(0, 5);
@@ -350,15 +351,24 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
     if (!current) return;
     setBusyLabel(label);
     try {
+      const notes = reviewNotes.trim();
       await api(`/admin/feedback/${current.id}/review`, token, {
         method: 'POST',
-        body: JSON.stringify({ label })
+        body: JSON.stringify({
+          label,
+          ...(notes ? { notes } : {})
+        })
       });
       await onRefresh();
+      setReviewNotes('');
     } finally {
       setBusyLabel(null);
     }
   }
+
+  useEffect(() => {
+    setReviewNotes('');
+  }, [current?.id]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent): void {
@@ -375,7 +385,7 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [current?.id]);
+  }, [current?.id, reviewNotes]);
 
   return (
     <section className="page-grid">
@@ -412,6 +422,25 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
                 <h3>Transcript context</h3>
                 <p>{current.payload.transcriptContext || 'No transcript context submitted.'}</p>
               </section>
+              <section className="feedback-box">
+                <h3>Extension Feedback</h3>
+                <div className="feedback-grid">
+                  <div>
+                    <span>Submitted as</span>
+                    <LabelBadge label={current.payload.feedback} />
+                  </div>
+                  <p>{current.payload.notes || 'No viewer note submitted.'}</p>
+                </div>
+              </section>
+              <label className="review-notes">
+                <span>Admin notes</span>
+                <textarea
+                  aria-label="Admin review notes"
+                  value={reviewNotes}
+                  onChange={(event) => setReviewNotes(event.target.value)}
+                  placeholder="Optional review notes"
+                />
+              </label>
               <div className="review-actions">
                 <ReviewButton label="Positive" value="positive" icon={ThumbsUp} busy={busyLabel} onSubmit={submit} />
                 <ReviewButton label="False positive" value="false_positive" icon={ThumbsDown} busy={busyLabel} onSubmit={submit} />
@@ -440,7 +469,10 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
           <Panel title="Recent Reviews">
             <div className="recent-list">
               {recent.map((item) => (
-                <span key={item.id}><LabelBadge label={item.review?.label ?? 'ignored'} /> {timeAgo(item.review?.reviewedAt ?? item.receivedAt)}</span>
+                <div key={item.id} className="recent-review">
+                  <span><LabelBadge label={item.review?.label ?? 'ignored'} /> {timeAgo(item.review?.reviewedAt ?? item.receivedAt)}</span>
+                  {item.review?.notes ? <small>{item.review.notes}</small> : null}
+                </div>
               ))}
             </div>
           </Panel>

@@ -55,12 +55,16 @@ describe('YapSkippr admin dashboard browser workflow', () => {
 
     await page.getByRole('button', { name: 'Review Queue' }).click();
     await expectVisible(page, page.getByText('2', { exact: true }).first());
+    await expectVisible(page, page.getByRole('heading', { name: 'Extension Feedback' }));
+    await expectVisible(page, page.getByText('Viewer confirmed the visible link report from the popup.'));
+    await page.getByLabel('Admin review notes').fill('Confirmed visible link cue during review.');
     const positiveReviewResponse = page.waitForResponse((response) => response.url().includes('/admin/feedback/') && response.url().endsWith('/review'));
     await page.getByRole('button', { name: 'Positive', exact: true }).click();
     const positiveReview = await positiveReviewResponse;
     expect(positiveReview.status()).toBe(200);
     await expectVisible(page, page.getByText('1', { exact: true }).first());
     await expectVisible(page, page.locator('.recent-list').getByText('Positive'));
+    await expectVisible(page, page.locator('.recent-list').getByText('Confirmed visible link cue during review.'));
 
     await page.getByRole('button', { name: 'Feedback' }).click();
     await page.getByLabel('Search feedback').fill('candidate-link');
@@ -144,6 +148,7 @@ async function seedFeedback(
     occurrenceId,
     videoId,
     source,
+    notes: source === 'frame-visible-link' ? 'Viewer confirmed the visible link report from the popup.' : undefined,
     candidateFeatures: {
       ...feedbackFixture().candidateFeatures,
       ...featureOverrides

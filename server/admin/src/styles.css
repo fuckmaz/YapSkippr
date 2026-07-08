@@ -605,13 +605,17 @@ nav em {
 }
 
 .evidence-box,
-.transcript-box {
+.transcript-box,
+.feedback-box,
+.review-notes {
   display: grid;
   gap: 9px;
 }
 
 .evidence-box h3,
-.transcript-box h3 {
+.transcript-box h3,
+.feedback-box h3,
+.review-notes span {
   margin: 0;
   font-size: 13px;
 }
@@ -634,17 +638,48 @@ nav em {
 }
 
 .evidence-row p,
-.transcript-box p {
+.transcript-box p,
+.feedback-grid p {
   margin: 0;
   color: var(--muted);
   line-height: 1.55;
 }
 
-.transcript-box {
+.transcript-box,
+.feedback-box,
+.review-notes {
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--surface-2);
+}
+
+.feedback-grid {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.feedback-grid div {
+  display: grid;
+  gap: 6px;
+}
+
+.feedback-grid span,
+.review-notes span {
+  color: var(--muted);
+}
+
+.review-notes textarea {
+  min-height: 74px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 9px 10px;
+  font: inherit;
 }
 
 .review-actions {
@@ -665,6 +700,16 @@ nav em {
 
 .review-side .panel {
   min-height: 0;
+}
+
+.recent-review {
+  display: grid;
+  gap: 5px;
+}
+
+.recent-review small {
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .evaluation-head {
@@ -982,6 +1027,7 @@ tr:last-child td {
 
   .donut-wrap,
   .evidence-row,
+  .feedback-grid,
   .bar-row {
     grid-template-columns: 1fr;
   }
