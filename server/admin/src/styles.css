@@ -750,6 +750,31 @@ nav em {
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
+.promoted-model-summary {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(140px, 0.45fr) minmax(0, 1.4fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.promoted-model-summary > div:not(.metric-strip) {
+  display: grid;
+  gap: 6px;
+  align-content: center;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+
+.promoted-model-summary span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
 select {
   min-height: 34px;
   border: 1px solid var(--border);
@@ -932,6 +957,7 @@ tr:last-child td {
   .review-layout,
   .evaluation-head,
   .model-detail-grid,
+  .promoted-model-summary,
   .metric-grid {
     grid-template-columns: 1fr;
   }

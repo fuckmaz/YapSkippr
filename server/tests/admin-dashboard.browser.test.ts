@@ -125,6 +125,10 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.getByRole('heading', { name: 'Promotion History' }));
     await expectVisible(page, page.locator('.promotion-history').getByText('promote'));
 
+    await page.getByRole('button', { name: 'Training' }).click();
+    await expectVisible(page, page.getByRole('heading', { name: 'Current Promoted Model' }));
+    await expectVisible(page, page.getByText('F1 delta'));
+
     await page.close();
   }, 60_000);
 });

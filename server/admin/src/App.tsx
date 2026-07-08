@@ -274,7 +274,7 @@ export function App(): JSX.Element {
             {page === 'feedback' ? <FeedbackTable items={data.feedback} /> : null}
             {page === 'videos' ? <VideosTable items={data.feedback} /> : null}
             {page === 'models' ? <ModelsPage token={token} models={data.models} promoted={data.promoted} history={data.promotionHistory} onRefresh={refresh} /> : null}
-            {page === 'training' ? <TrainingPage token={token} runs={data.trainingRuns} onRefresh={refresh} /> : null}
+            {page === 'training' ? <TrainingPage token={token} runs={data.trainingRuns} promoted={data.promoted} onRefresh={refresh} /> : null}
           </>
         ) : null}
       </main>
@@ -759,7 +759,17 @@ function ModelEvaluationPanel({ model, evaluation }: { model: ModelArtifact; eva
   );
 }
 
-function TrainingPage({ token, runs, onRefresh }: { token: string; runs: TrainingRun[]; onRefresh: () => Promise<void> }): JSX.Element {
+function TrainingPage({
+  token,
+  runs,
+  promoted,
+  onRefresh
+}: {
+  token: string;
+  runs: TrainingRun[];
+  promoted: ModelArtifact | null;
+  onRefresh: () => Promise<void>;
+}): JSX.Element {
   const [busy, setBusy] = useState(false);
   async function train(): Promise<void> {
     setBusy(true);
@@ -776,13 +786,32 @@ function TrainingPage({ token, runs, onRefresh }: { token: string; runs: Trainin
       <button type="button" className="primary train-button" onClick={() => void train()} disabled={busy}>
         {busy ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />} Train model
       </button>
-      <DataTable columns={['Run', 'Model', 'Dataset', 'Validation', 'Accuracy', 'F1', 'Status']} rows={runs.map((run) => [
+      <Panel title="Current Promoted Model">
+        {promoted ? (
+          <div className="promoted-model-summary">
+            <div>
+              <span>Model</span>
+              <code>{promoted.modelId}</code>
+            </div>
+            <div>
+              <span>Version</span>
+              <strong>{promoted.modelVersion}</strong>
+            </div>
+            <MetricStrip metrics={promoted.metrics} />
+          </div>
+        ) : (
+          <EmptyState title="No promoted model" detail="Promote a trained model to compare future training runs against it." />
+        )}
+      </Panel>
+      <DataTable columns={['Run', 'Model', 'Dataset', 'Validation', 'Accuracy', 'F1', 'Accuracy delta', 'F1 delta', 'Status']} rows={runs.map((run) => [
         timeAgo(run.createdAt),
         run.modelId,
         run.datasetSize,
         run.validationSize,
         formatMetric(run.metrics.accuracy),
         formatMetric(run.metrics.f1),
+        formatMetricDelta(run.metrics.accuracy, promoted?.metrics.accuracy),
+        formatMetricDelta(run.metrics.f1, promoted?.metrics.f1),
         <span className="status positive">{run.status}</span>
       ])} />
     </section>
@@ -1067,6 +1096,11 @@ function formatMetric(value: number | undefined): string {
 function formatSignedMetric(value: number | undefined): string {
   if (value === undefined) return '-';
   return `${value >= 0 ? '+' : ''}${value.toFixed(3)}`;
+}
+
+function formatMetricDelta(value: number | undefined, baseline: number | undefined): string {
+  if (value === undefined || baseline === undefined) return '-';
+  return formatSignedMetric(value - baseline);
 }
 
 function numberValue(value: number | undefined): number {
