@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { buildServer } from '../src/app';
+import type { CandidateModelArtifact } from '../src/model/types';
+import { createMemoryRepository } from '../src/store/memory';
 import { feedbackFixture } from './fixtures';
 
 describe('YapSkippr server API', () => {
@@ -197,4 +199,84 @@ describe('YapSkippr server API', () => {
 
     await app.close();
   });
+
+  test('rejects rollback for models that are not currently promoted', async () => {
+    const repository = createMemoryRepository();
+    await repository.saveModel(modelArtifact('model-a', '2026.07.01.000001'));
+    await repository.saveModel(modelArtifact('model-b', '2026.07.01.000002'));
+    const app = await buildServer({ adminToken: 'secret', repository });
+
+    const promoteA = await app.inject({
+      method: 'POST',
+      url: '/admin/models/model-a/promote',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    expect(promoteA.statusCode).toBe(200);
+
+    const promoteB = await app.inject({
+      method: 'POST',
+      url: '/admin/models/model-b/promote',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    expect(promoteB.statusCode).toBe(200);
+
+    const rejectedRollback = await app.inject({
+      method: 'POST',
+      url: '/admin/models/model-a/rollback',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    expect(rejectedRollback.statusCode).toBe(409);
+    expect(rejectedRollback.json()).toMatchObject({
+      ok: false,
+      error: 'Only the currently promoted model can be rolled back.'
+    });
+
+    const latestAfterRejectedRollback = await app.inject({ method: 'GET', url: '/api/v1/model/latest' });
+    expect(latestAfterRejectedRollback.statusCode).toBe(200);
+    expect(latestAfterRejectedRollback.json().modelId).toBe('model-b');
+
+    const rollbackCurrent = await app.inject({
+      method: 'POST',
+      url: '/admin/models/model-b/rollback',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    expect(rollbackCurrent.statusCode).toBe(200);
+    expect(rollbackCurrent.json().model.modelId).toBe('model-a');
+
+    const latestAfterRollback = await app.inject({ method: 'GET', url: '/api/v1/model/latest' });
+    expect(latestAfterRollback.statusCode).toBe(200);
+    expect(latestAfterRollback.json().modelId).toBe('model-a');
+
+    await app.close();
+  });
 });
+
+function modelArtifact(modelId: string, version: string): CandidateModelArtifact {
+  return {
+    modelId,
+    modelVersion: version,
+    featureSchemaVersion: 1,
+    createdAt: '2026-07-07T10:00:00.000Z',
+    promotedAt: null,
+    intercept: 0,
+    weights: {
+      heuristicConfidence: 1
+    },
+    thresholds: {
+      positive: 0.65,
+      review: 0.45
+    },
+    metrics: {
+      accuracy: 0.9,
+      precision: 0.8,
+      recall: 0.7,
+      f1: 0.75,
+      auc: 0.85
+    },
+    trainingSetSummary: {
+      examples: 2,
+      positives: 1,
+      negatives: 1
+    }
+  };
+}

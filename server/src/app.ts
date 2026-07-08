@@ -109,8 +109,13 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     return { ok: true, model };
   });
 
-  app.post('/admin/models/:id/rollback', { preHandler: requireAdmin(adminToken) }, async (request) => {
+  app.post('/admin/models/:id/rollback', { preHandler: requireAdmin(adminToken) }, async (request, reply) => {
     const { id } = request.params as { id: string };
+    const promoted = await repository.getPromotedModel();
+    if (!promoted) return reply.status(409).send({ ok: false, error: 'No model is currently promoted.' });
+    if (promoted.modelId !== id) {
+      return reply.status(409).send({ ok: false, error: 'Only the currently promoted model can be rolled back.' });
+    }
     const model = await repository.rollbackModel(id);
     return { ok: true, model };
   });
