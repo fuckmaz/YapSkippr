@@ -373,6 +373,7 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
   useEffect(() => {
     function onKey(event: KeyboardEvent): void {
       if (!current) return;
+      if (isEditableShortcutTarget(event.target)) return;
       const map: Record<string, ReviewLabel> = {
         '1': 'positive',
         '2': 'false_positive',
@@ -480,6 +481,12 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
       </div>
     </section>
   );
+}
+
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName.toLowerCase();
+  return target.isContentEditable || tagName === 'input' || tagName === 'textarea' || tagName === 'select' || tagName === 'button';
 }
 
 function FeedbackTable({ items }: { items: FeedbackRecord[] }): JSX.Element {

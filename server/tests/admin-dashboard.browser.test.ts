@@ -57,6 +57,10 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.getByText('2', { exact: true }).first());
     await expectVisible(page, page.getByRole('heading', { name: 'Extension Feedback' }));
     await expectVisible(page, page.getByText('Viewer confirmed the visible link report from the popup.'));
+    await page.getByLabel('Admin review notes').click();
+    await page.keyboard.type('Needs 1 more pass');
+    await page.waitForTimeout(250);
+    await expectVisible(page, page.locator('.queue-number').getByText('2', { exact: true }));
     await page.getByLabel('Admin review notes').fill('Confirmed visible link cue during review.');
     const positiveReviewResponse = page.waitForResponse((response) => response.url().includes('/admin/feedback/') && response.url().endsWith('/review'));
     await page.getByRole('button', { name: 'Positive', exact: true }).click();
