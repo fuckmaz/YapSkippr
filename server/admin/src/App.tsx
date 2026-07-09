@@ -109,6 +109,17 @@ interface ModelEvaluation {
   trainingSetSummary: Record<string, number>;
 }
 
+interface TrainingReadiness {
+  featureSchemaVersion: number;
+  totalExamples: number;
+  compatibleExamples: number;
+  incompatibleExamples: number;
+  positiveExamples: number;
+  negativeExamples: number;
+  ready: boolean;
+  blocker: string | null;
+}
+
 interface Summary {
   totalFeedback: number;
   reviewedFeedback: number;
@@ -119,6 +130,7 @@ interface Summary {
   feedbackLabelDistribution: Record<string, number>;
   reviewThroughput: Array<{ date: string; reviewed: number }>;
   modelPerformance: Record<string, number>;
+  trainingReadiness: TrainingReadiness;
 }
 
 interface VideoSummaryRow {
@@ -301,7 +313,7 @@ export function App(): JSX.Element {
             {page === 'feedback' ? <FeedbackTable items={data.feedback} /> : null}
             {page === 'videos' ? <VideosTable items={data.feedback} /> : null}
             {page === 'models' ? <ModelsPage token={token} models={data.models} promoted={data.promoted} history={data.promotionHistory} onRefresh={refresh} /> : null}
-            {page === 'training' ? <TrainingPage token={token} runs={data.trainingRuns} promoted={data.promoted} onRefresh={refresh} /> : null}
+            {page === 'training' ? <TrainingPage token={token} summary={data.summary} runs={data.trainingRuns} promoted={data.promoted} onRefresh={refresh} /> : null}
           </>
         ) : null}
       </main>
@@ -980,11 +992,13 @@ function ModelEvaluationPanel({ model, evaluation }: { model: ModelArtifact; eva
 
 function TrainingPage({
   token,
+  summary,
   runs,
   promoted,
   onRefresh
 }: {
   token: string;
+  summary: Summary | null;
   runs: TrainingRun[];
   promoted: ModelArtifact | null;
   onRefresh: () => Promise<void>;
@@ -1010,6 +1024,7 @@ function TrainingPage({
         {busy ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />} Train model
       </button>
       {error ? <div className="inline-alert"><XCircle size={16} /> {error}</div> : null}
+      <TrainingReadinessPanel readiness={summary?.trainingReadiness ?? null} />
       <Panel title="Current Promoted Model">
         {promoted ? (
           <div className="promoted-model-summary">
@@ -1039,6 +1054,46 @@ function TrainingPage({
         <span className="status positive">{run.status}</span>
       ])} />
     </section>
+  );
+}
+
+function TrainingReadinessPanel({ readiness }: { readiness: TrainingReadiness | null }): JSX.Element {
+  if (!readiness) {
+    return (
+      <Panel title="Training Readiness">
+        <EmptyState title="Readiness unavailable" detail="Refresh the dashboard to load training example counts." />
+      </Panel>
+    );
+  }
+
+  return (
+    <Panel title="Training Readiness">
+      <div className="training-readiness">
+        <div className="readiness-status">
+          <span className={readiness.ready ? 'status positive' : 'status pending'}>{readiness.ready ? 'Ready' : 'Blocked'}</span>
+          <p>{readiness.blocker ?? 'Reviewed feedback has both positive and negative compatible examples for the active schema.'}</p>
+        </div>
+        <div className="readiness-grid">
+          <div>
+            <span>Feature schema</span>
+            <strong>Schema {readiness.featureSchemaVersion}</strong>
+          </div>
+          <div>
+            <span>Usable dataset</span>
+            <strong>{readiness.compatibleExamples.toLocaleString()} compatible</strong>
+            <small>{readiness.incompatibleExamples.toLocaleString()} incompatible</small>
+          </div>
+          <div>
+            <span>Label balance</span>
+            <strong>{readiness.positiveExamples.toLocaleString()} positive · {readiness.negativeExamples.toLocaleString()} negative</strong>
+          </div>
+          <div>
+            <span>Total reviewed examples</span>
+            <strong>{readiness.totalExamples.toLocaleString()}</strong>
+          </div>
+        </div>
+      </div>
+    </Panel>
   );
 }
 

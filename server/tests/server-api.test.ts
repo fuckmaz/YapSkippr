@@ -403,6 +403,79 @@ describe('YapSkippr server API', () => {
     await app.close();
   });
 
+  test('reports training readiness from schema-compatible reviewed examples', async () => {
+    const app = await buildServer({ adminToken: 'secret' });
+
+    const oldSchemaPositive = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'candidate-old-schema-summary',
+        videoId: 'video-old-summary',
+        featureSchemaVersion: 1
+      })
+    });
+    const currentSchemaPositive = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'candidate-current-positive-summary',
+        videoId: 'video-current-positive-summary'
+      })
+    });
+    const currentSchemaNegative = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'candidate-current-negative-summary',
+        videoId: 'video-current-negative-summary',
+        feedback: 'false_positive',
+        candidateFeatures: {
+          ...feedbackFixture().candidateFeatures,
+          transcriptStartCount: 0,
+          visibleLinkCount: 1,
+          sponsorPhraseHitCount: 0
+        }
+      })
+    });
+
+    for (const [response, label] of [
+      [oldSchemaPositive, 'positive'],
+      [currentSchemaPositive, 'positive'],
+      [currentSchemaNegative, 'false_positive']
+    ] as const) {
+      expect(response.statusCode).toBe(201);
+      const review = await app.inject({
+        method: 'POST',
+        url: `/admin/feedback/${response.json().feedbackId}/review`,
+        headers: { 'x-admin-token': 'secret' },
+        payload: { label }
+      });
+      expect(review.statusCode).toBe(200);
+    }
+
+    const summary = await app.inject({
+      method: 'GET',
+      url: '/admin/api/summary',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    expect(summary.statusCode).toBe(200);
+    expect(summary.json()).toMatchObject({
+      trainingReadiness: {
+        featureSchemaVersion: 2,
+        totalExamples: 3,
+        compatibleExamples: 2,
+        incompatibleExamples: 1,
+        positiveExamples: 1,
+        negativeExamples: 1,
+        ready: true,
+        blocker: null
+      }
+    });
+
+    await app.close();
+  });
+
   test('rejects rollback for models that are not currently promoted', async () => {
     const repository = createMemoryRepository();
     await repository.saveModel(modelArtifact('model-a', '2026.07.01.000001'));

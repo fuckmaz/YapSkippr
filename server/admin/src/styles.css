@@ -999,6 +999,57 @@ nav em {
   text-transform: uppercase;
 }
 
+.training-readiness {
+  display: grid;
+  gap: 12px;
+}
+
+.readiness-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+
+.readiness-status p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: right;
+}
+
+.readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.readiness-grid div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+
+.readiness-grid span,
+.readiness-grid small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.readiness-grid strong {
+  overflow-wrap: anywhere;
+}
+
 select {
   min-height: 34px;
   border: 1px solid var(--border);
@@ -1195,6 +1246,7 @@ tr:last-child td {
   .model-detail-grid,
   .feedback-detail-grid,
   .promoted-model-summary,
+  .readiness-grid,
   .metric-grid {
     grid-template-columns: 1fr;
   }
@@ -1212,9 +1264,14 @@ tr:last-child td {
   }
 
   .topbar,
+  .readiness-status,
   .review-head,
   .login-panel {
     display: grid;
+  }
+
+  .readiness-status p {
+    text-align: left;
   }
 
   .donut-wrap,

@@ -1,5 +1,6 @@
 import type { FeedbackPayloadV2 } from '../feedback/schema.js';
 import type { CandidateModelArtifact, LabeledTrainingExample } from '../model/types.js';
+import type { TrainingReadinessSummary } from '../model/training-readiness.js';
 
 export type ReviewLabel = 'positive' | 'false_positive' | 'wrong_timing' | 'duplicate' | 'ignored' | 'needs_more_data';
 
@@ -45,6 +46,7 @@ export interface DashboardSummary {
   feedbackLabelDistribution: Record<string, number>;
   reviewThroughput: Array<{ date: string; reviewed: number }>;
   modelPerformance: Record<string, number>;
+  trainingReadiness: TrainingReadinessSummary;
 }
 
 export interface YapSkipprRepository {

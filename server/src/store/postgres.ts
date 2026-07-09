@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
 import type { FeedbackPayloadV2 } from '../feedback/schema.js';
+import { summarizeTrainingReadiness } from '../model/training-readiness.js';
 import type { CandidateModelArtifact, LabeledTrainingExample } from '../model/types.js';
 import type {
   DashboardSummary,
@@ -193,6 +194,7 @@ export function createPostgresRepository(databaseUrl: string): YapSkipprReposito
       const feedback = await this.listFeedback();
       const models = await this.listModels();
       const promotedModel = await this.getPromotedModel();
+      const trainingExamples = await this.listTrainingExamples();
       const reviewed = feedback.filter((item) => item.review);
       return {
         totalFeedback: feedback.length,
@@ -203,7 +205,8 @@ export function createPostgresRepository(databaseUrl: string): YapSkipprReposito
         detectorSourceDistribution: countBy(feedback, (item) => item.payload.source ?? item.payload.occurrenceType),
         feedbackLabelDistribution: countBy(reviewed, (item) => item.review?.label ?? 'pending'),
         reviewThroughput: buildReviewThroughput(reviewed),
-        modelPerformance: promotedModel?.metrics ?? {}
+        modelPerformance: promotedModel?.metrics ?? {},
+        trainingReadiness: summarizeTrainingReadiness(trainingExamples)
       } satisfies DashboardSummary;
     },
 

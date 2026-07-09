@@ -80,10 +80,14 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.locator('.recent-list').getByText('Confirmed visible link cue during review.'));
 
     await page.getByRole('button', { name: 'Training' }).click();
+    await expectVisible(page, page.getByRole('heading', { name: 'Training Readiness' }));
+    await expectVisible(page, page.getByText('Schema 2', { exact: true }));
+    await expectVisible(page, page.getByText('1 compatible'));
+    await expectVisible(page, page.getByText('1 positive · 0 negative'));
     const rejectedTrainResponse = page.waitForResponse((response) => response.url().endsWith('/admin/models/train'));
     await page.getByRole('button', { name: 'Train model' }).click();
     expect((await rejectedTrainResponse).status()).toBe(400);
-    await expectVisible(page, page.getByText('Training requires at least one positive and one negative reviewed example for feature schema 2.'));
+    await expectVisible(page, page.locator('.inline-alert').getByText('Training requires at least one positive and one negative reviewed example for feature schema 2.'));
 
     await page.getByRole('button', { name: 'Feedback' }).click();
     await page.getByLabel('Search feedback').fill('candidate-link');
