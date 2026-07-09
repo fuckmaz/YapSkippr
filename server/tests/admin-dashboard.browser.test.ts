@@ -99,7 +99,7 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     expect(await page.getByText('candidate-positive').count()).toBe(0);
     await page.getByLabel('Search training dataset').fill('');
     await page.getByLabel('Training dataset sort').selectOption('time-asc');
-    await expectVisible(page, page.getByRole('columnheader', { name: 'Actions' }));
+    await expectVisible(page, page.locator('.training-dataset-panel').getByRole('columnheader', { name: 'Actions' }));
     await page.getByRole('button', { name: 'Inspect dataset row candidate-link' }).click();
     await expectVisible(page, page.getByRole('heading', { name: 'Training Dataset Details' }));
     await expectVisible(page, page.getByText('visibleLinkCount'));
@@ -162,6 +162,12 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     const trained = await trainResponse;
     expect(trained.status()).toBe(201);
     await expectVisible(page, page.getByRole('cell', { name: 'completed' }));
+    await expectVisible(page, page.locator('.training-runs-panel').getByRole('columnheader', { name: 'Actions' }));
+    await page.locator('.training-runs-panel tbody tr').first().getByRole('button', { name: /Inspect training run / }).click();
+    await expectVisible(page, page.getByRole('heading', { name: 'Training Run Details' }));
+    await expectVisible(page, page.getByText('Dataset split'));
+    await expectVisible(page, page.getByText('Validation metrics'));
+    await expectVisible(page, page.getByText('No promoted model is currently available for comparison.'));
 
     await page.getByRole('button', { name: 'Models' }).click();
     await page.getByLabel('Search models').fill('model_');
@@ -214,7 +220,10 @@ describe('YapSkippr admin dashboard browser workflow', () => {
 
     await page.getByRole('button', { name: 'Training' }).click();
     await expectVisible(page, page.getByRole('heading', { name: 'Current Promoted Model' }));
-    await expectVisible(page, page.getByText('F1 delta'));
+    await page.locator('.training-runs-panel tbody tr').first().getByRole('button', { name: /Inspect training run / }).click();
+    await expectVisible(page, page.getByRole('heading', { name: 'Training Run Details' }));
+    await expectVisible(page, page.getByText('Comparison to promoted model'));
+    await expectVisible(page, page.locator('.training-run-detail-panel').getByText('F1 delta'));
 
     await page.close();
   }, 60_000);

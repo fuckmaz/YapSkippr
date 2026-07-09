@@ -355,7 +355,7 @@ export function App(): JSX.Element {
             {page === 'feedback' ? <FeedbackTable items={data.feedback} /> : null}
             {page === 'videos' ? <VideosTable items={data.feedback} /> : null}
             {page === 'models' ? <ModelsPage token={token} models={data.models} promoted={data.promoted} history={data.promotionHistory} onRefresh={refresh} /> : null}
-            {page === 'training' ? <TrainingPage token={token} summary={data.summary} feedback={data.feedback} runs={data.trainingRuns} trainingDataset={data.trainingDataset} promoted={data.promoted} onRefresh={refresh} /> : null}
+            {page === 'training' ? <TrainingPage token={token} summary={data.summary} feedback={data.feedback} models={data.models} runs={data.trainingRuns} trainingDataset={data.trainingDataset} promoted={data.promoted} onRefresh={refresh} /> : null}
           </>
         ) : null}
       </main>
@@ -1095,6 +1095,7 @@ function TrainingPage({
   token,
   summary,
   feedback,
+  models,
   runs,
   trainingDataset,
   promoted,
@@ -1103,6 +1104,7 @@ function TrainingPage({
   token: string;
   summary: Summary | null;
   feedback: FeedbackRecord[];
+  models: ModelArtifact[];
   runs: TrainingRun[];
   trainingDataset: TrainingDatasetRow[];
   promoted: ModelArtifact | null;
@@ -1115,7 +1117,9 @@ function TrainingPage({
   const [datasetStatusFilter, setDatasetStatusFilter] = useState('all');
   const [datasetSort, setDatasetSort] = useState('received-desc');
   const [selectedDatasetFeedbackId, setSelectedDatasetFeedbackId] = useState<string | null>(null);
+  const [selectedTrainingRunId, setSelectedTrainingRunId] = useState<string | null>(null);
   const feedbackById = useMemo(() => new Map(feedback.map((item) => [item.id, item])), [feedback]);
+  const modelById = useMemo(() => new Map(models.map((model) => [model.modelId, model])), [models]);
   const datasetSources = useMemo(() => {
     return [...new Set(trainingDataset.map((row) => row.source))]
       .sort((a, b) => sourceLabel(a).localeCompare(sourceLabel(b)));
@@ -1137,6 +1141,8 @@ function TrainingPage({
     ? trainingDataset.find((row) => row.feedbackId === selectedDatasetFeedbackId) ?? null
     : null;
   const selectedDatasetFeedback = selectedDatasetFeedbackId ? feedbackById.get(selectedDatasetFeedbackId) ?? null : null;
+  const selectedTrainingRun = selectedTrainingRunId ? runs.find((run) => run.id === selectedTrainingRunId) ?? null : null;
+  const selectedTrainingRunModel = selectedTrainingRun ? modelById.get(selectedTrainingRun.modelId) ?? null : null;
 
   useEffect(() => {
     setSelectedDatasetFeedbackId(null);
@@ -1162,73 +1168,75 @@ function TrainingPage({
       </button>
       {error ? <div className="inline-alert"><XCircle size={16} /> {error}</div> : null}
       <TrainingReadinessPanel readiness={summary?.trainingReadiness ?? null} />
-      <Panel title="Training Dataset Explorer">
-        <div className="table-toolbar">
-          <label className="inline-search">
-            <Search size={16} />
-            <input
-              aria-label="Search training dataset"
-              value={datasetQuery}
-              onChange={(event) => setDatasetQuery(event.target.value)}
-              placeholder="Search dataset..."
-            />
-          </label>
-          <label className="filter-control">
-            <span>Source</span>
-            <select
-              aria-label="Training dataset source filter"
-              value={datasetSourceFilter}
-              onChange={(event) => setDatasetSourceFilter(event.target.value)}
-            >
-              <option value="all">All sources</option>
-              {datasetSources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
-            </select>
-          </label>
-          <label className="filter-control">
-            <span>Status</span>
-            <select
-              aria-label="Training dataset status filter"
-              value={datasetStatusFilter}
-              onChange={(event) => setDatasetStatusFilter(event.target.value)}
-            >
-              <option value="all">All rows</option>
-              <option value="trainable">Trainable</option>
-              <option value="blocked">Blocked</option>
-              <option value="incompatible">Incompatible schema</option>
-            </select>
-          </label>
-          <label className="filter-control">
-            <span>Sort</span>
-            <select
-              aria-label="Training dataset sort"
-              value={datasetSort}
-              onChange={(event) => setDatasetSort(event.target.value)}
-            >
-              <option value="received-desc">Newest first</option>
-              <option value="received-asc">Oldest first</option>
-              <option value="time-asc">Earliest timecode</option>
-              <option value="confidence-desc">Model confidence</option>
-              <option value="trainable-first">Trainable first</option>
-            </select>
-          </label>
-        </div>
-        <DataTable columns={['Candidate', 'Video', 'Source', 'Timecode', 'Review', 'Schema', 'Features', 'Trainable', 'Reason', 'Actions']} rows={visibleTrainingDataset.map((row) => [
-          row.occurrenceId,
-          row.videoId ?? 'unknown',
-          sourceLabel(row.source),
-          formatTime(row.startSeconds),
-          row.reviewLabel ? <LabelBadge label={row.reviewLabel} /> : <span className="status pending">Pending</span>,
-          row.featureSchemaVersion === null ? '-' : `Schema ${row.featureSchemaVersion}`,
-          row.featureCount,
-          row.trainable ? <span className="status positive">Trainable</span> : <span className="status pending">Blocked</span>,
-          row.exclusionReason ?? 'Ready for confidence training',
-          <div className="table-actions">
-            <button type="button" aria-label={`Inspect dataset row ${row.occurrenceId}`} onClick={() => setSelectedDatasetFeedbackId(row.feedbackId)}>
-              <Eye size={14} /> Inspect
-            </button>
+      <div className="training-dataset-panel">
+        <Panel title="Training Dataset Explorer">
+          <div className="table-toolbar">
+            <label className="inline-search">
+              <Search size={16} />
+              <input
+                aria-label="Search training dataset"
+                value={datasetQuery}
+                onChange={(event) => setDatasetQuery(event.target.value)}
+                placeholder="Search dataset..."
+              />
+            </label>
+            <label className="filter-control">
+              <span>Source</span>
+              <select
+                aria-label="Training dataset source filter"
+                value={datasetSourceFilter}
+                onChange={(event) => setDatasetSourceFilter(event.target.value)}
+              >
+                <option value="all">All sources</option>
+                {datasetSources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
+              </select>
+            </label>
+            <label className="filter-control">
+              <span>Status</span>
+              <select
+                aria-label="Training dataset status filter"
+                value={datasetStatusFilter}
+                onChange={(event) => setDatasetStatusFilter(event.target.value)}
+              >
+                <option value="all">All rows</option>
+                <option value="trainable">Trainable</option>
+                <option value="blocked">Blocked</option>
+                <option value="incompatible">Incompatible schema</option>
+              </select>
+            </label>
+            <label className="filter-control">
+              <span>Sort</span>
+              <select
+                aria-label="Training dataset sort"
+                value={datasetSort}
+                onChange={(event) => setDatasetSort(event.target.value)}
+              >
+                <option value="received-desc">Newest first</option>
+                <option value="received-asc">Oldest first</option>
+                <option value="time-asc">Earliest timecode</option>
+                <option value="confidence-desc">Model confidence</option>
+                <option value="trainable-first">Trainable first</option>
+              </select>
+            </label>
           </div>
-        ])} />
-      </Panel>
+          <DataTable columns={['Candidate', 'Video', 'Source', 'Timecode', 'Review', 'Schema', 'Features', 'Trainable', 'Reason', 'Actions']} rows={visibleTrainingDataset.map((row) => [
+            row.occurrenceId,
+            row.videoId ?? 'unknown',
+            sourceLabel(row.source),
+            formatTime(row.startSeconds),
+            row.reviewLabel ? <LabelBadge label={row.reviewLabel} /> : <span className="status pending">Pending</span>,
+            row.featureSchemaVersion === null ? '-' : `Schema ${row.featureSchemaVersion}`,
+            row.featureCount,
+            row.trainable ? <span className="status positive">Trainable</span> : <span className="status pending">Blocked</span>,
+            row.exclusionReason ?? 'Ready for confidence training',
+            <div className="table-actions">
+              <button type="button" aria-label={`Inspect dataset row ${row.occurrenceId}`} onClick={() => setSelectedDatasetFeedbackId(row.feedbackId)}>
+                <Eye size={14} /> Inspect
+              </button>
+            </div>
+          ])} />
+        </Panel>
+      </div>
       {selectedDatasetRow ? <TrainingDatasetDetailPanel row={selectedDatasetRow} feedback={selectedDatasetFeedback} /> : null}
       <Panel title="Current Promoted Model">
         {promoted ? (
@@ -1247,18 +1255,88 @@ function TrainingPage({
           <EmptyState title="No promoted model" detail="Promote a trained model to compare future training runs against it." />
         )}
       </Panel>
-      <DataTable columns={['Run', 'Model', 'Dataset', 'Validation', 'Accuracy', 'F1', 'Accuracy delta', 'F1 delta', 'Status']} rows={runs.map((run) => [
-        timeAgo(run.createdAt),
-        run.modelId,
-        run.datasetSize,
-        run.validationSize,
-        formatMetric(run.metrics.accuracy),
-        formatMetric(run.metrics.f1),
-        formatMetricDelta(run.metrics.accuracy, promoted?.metrics.accuracy),
-        formatMetricDelta(run.metrics.f1, promoted?.metrics.f1),
-        <span className="status positive">{run.status}</span>
-      ])} />
+      <div className="training-runs-panel">
+        <Panel title="Training Runs">
+          <DataTable columns={['Run', 'Model', 'Dataset', 'Validation', 'Accuracy', 'F1', 'Accuracy delta', 'F1 delta', 'Status', 'Actions']} rows={runs.map((run) => [
+            timeAgo(run.createdAt),
+            run.modelId,
+            run.datasetSize,
+            run.validationSize,
+            formatMetric(run.metrics.accuracy),
+            formatMetric(run.metrics.f1),
+            formatMetricDelta(run.metrics.accuracy, promoted?.metrics.accuracy),
+            formatMetricDelta(run.metrics.f1, promoted?.metrics.f1),
+            <span className="status positive">{run.status}</span>,
+            <div className="table-actions">
+              <button type="button" aria-label={`Inspect training run ${run.id}`} onClick={() => setSelectedTrainingRunId(run.id)}>
+                <Eye size={14} /> Inspect
+              </button>
+            </div>
+          ])} />
+        </Panel>
+      </div>
+      {selectedTrainingRun ? <TrainingRunDetailPanel run={selectedTrainingRun} model={selectedTrainingRunModel} promoted={promoted} /> : null}
     </section>
+  );
+}
+
+function TrainingRunDetailPanel({
+  run,
+  model,
+  promoted
+}: {
+  run: TrainingRun;
+  model: ModelArtifact | null;
+  promoted: ModelArtifact | null;
+}): JSX.Element {
+  const summary = model?.trainingSetSummary ?? {};
+  const comparison = promoted ? Object.entries(run.metrics).sort(([a], [b]) => a.localeCompare(b)) : [];
+
+  return (
+    <div className="training-run-detail-panel">
+      <Panel title="Training Run Details">
+        <div className="model-detail-grid">
+          <section>
+            <h3>Dataset split</h3>
+            <div className="summary-list">
+              <DetailRow label="Dataset examples" value={run.datasetSize} />
+              <DetailRow label="Validation examples" value={run.validationSize} />
+              <DetailRow label="Train examples" value={formatOptionalMetric(summary.trainExamples)} />
+              <DetailRow label="Positive examples" value={formatOptionalMetric(summary.positives)} />
+              <DetailRow label="Negative examples" value={formatOptionalMetric(summary.negatives)} />
+              <DetailRow label="Feature count" value={formatOptionalMetric(summary.featureCount)} />
+            </div>
+          </section>
+          <section>
+            <h3>Run metadata</h3>
+            <div className="summary-list">
+              <DetailRow label="Run" value={run.id} />
+              <DetailRow label="Model" value={run.modelId} />
+              <DetailRow label="Created" value={formatAbsoluteDate(run.createdAt)} />
+              <DetailRow label="Status" value={run.status} />
+              <DetailRow label="Feature schema" value={model?.featureSchemaVersion ?? '-'} />
+            </div>
+          </section>
+          <section>
+            <h3>Validation metrics</h3>
+            <MetricStrip metrics={run.metrics} />
+          </section>
+          <section>
+            <h3>Comparison to promoted model</h3>
+            {promoted ? (
+              <div className="summary-list">
+                <DetailRow label="Promoted model" value={promoted.modelId} />
+                {comparison.map(([metric, value]) => (
+                  <DetailRow key={metric} label={`${metric} delta`} value={formatMetricDelta(value, promoted.metrics[metric])} />
+                ))}
+              </div>
+            ) : (
+              <p className="muted-note">No promoted model is currently available for comparison.</p>
+            )}
+          </section>
+        </div>
+      </Panel>
+    </div>
   );
 }
 
@@ -1791,6 +1869,10 @@ function formatFeatureValue(value: number): string {
 
 function formatMetric(value: number | undefined): string {
   return value === undefined ? '-' : value.toFixed(3);
+}
+
+function formatOptionalMetric(value: unknown): string {
+  return typeof value === 'number' && Number.isFinite(value) ? formatFeatureValue(value) : '-';
 }
 
 function formatSignedMetric(value: number | undefined): string {
