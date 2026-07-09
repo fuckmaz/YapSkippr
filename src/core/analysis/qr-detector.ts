@@ -1,4 +1,4 @@
-import jsQR from 'jsqr';
+import jsQR, { type QRCode } from 'jsqr';
 import type { TimedEvidence } from '../types';
 
 interface BarcodeDetectorLike {
@@ -6,6 +6,7 @@ interface BarcodeDetectorLike {
 }
 
 type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorLike;
+type JsQrDetector = 'jsqr' | 'jsqr-upscaled';
 
 const MAX_UPSCALED_PIXELS = 1_200_000;
 
@@ -14,18 +15,18 @@ export async function detectQrCue(imageData: ImageData, currentTimeSeconds: numb
   if (nativeEvidence.length > 0) return nativeEvidence;
 
   const result = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
-  if (result?.data) return [createQrEvidence(result.data, currentTimeSeconds, 'jsqr')];
+  if (result?.data) return [createQrEvidence(result, currentTimeSeconds, 'jsqr')];
 
   const upscaled = upscaleForQrRetry(imageData);
   if (!upscaled) return [];
 
-  const upscaledResult = jsQR(upscaled.data, upscaled.width, upscaled.height, { inversionAttempts: 'attemptBoth' });
-  if (upscaledResult?.data) return [createQrEvidence(upscaledResult.data, currentTimeSeconds, 'jsqr-upscaled')];
+  const upscaledResult = jsQR(upscaled.imageData.data, upscaled.imageData.width, upscaled.imageData.height, { inversionAttempts: 'attemptBoth' });
+  if (upscaledResult?.data) return [createQrEvidence(upscaledResult, currentTimeSeconds, 'jsqr-upscaled', upscaled.factor)];
 
   return [];
 }
 
-function createQrEvidence(value: string, currentTimeSeconds: number, detector: 'jsqr' | 'jsqr-upscaled'): TimedEvidence {
+function createQrEvidence(result: QRCode, currentTimeSeconds: number, detector: JsQrDetector, coordinateScale = 1): TimedEvidence {
   return {
     source: 'frame-qr-code',
     kind: 'ad-read-presence',
@@ -33,13 +34,14 @@ function createQrEvidence(value: string, currentTimeSeconds: number, detector: '
     confidence: detector === 'jsqr-upscaled' ? 0.82 : 0.85,
     reason: 'Detected QR code in sampled video frame.',
     raw: {
-      value,
-      detector
+      value: result.data,
+      detector,
+      location: scaleQrLocation(result.location, coordinateScale)
     }
   };
 }
 
-function upscaleForQrRetry(imageData: ImageData): ImageData | null {
+function upscaleForQrRetry(imageData: ImageData): { imageData: ImageData; factor: number } | null {
   const factor = chooseUpscaleFactor(imageData.width, imageData.height);
   if (factor <= 1) return null;
 
@@ -60,7 +62,10 @@ function upscaleForQrRetry(imageData: ImageData): ImageData | null {
     }
   }
 
-  return { data, width, height, colorSpace: imageData.colorSpace } as ImageData;
+  return {
+    imageData: { data, width, height, colorSpace: imageData.colorSpace } as ImageData,
+    factor
+  };
 }
 
 function chooseUpscaleFactor(width: number, height: number): number {
@@ -72,6 +77,31 @@ function chooseUpscaleFactor(width: number, height: number): number {
   }
 
   return factor;
+}
+
+function scaleQrLocation(location: QRCode['location'], scale: number): QRCode['location'] {
+  const scaled: QRCode['location'] = {
+    topRightCorner: scalePoint(location.topRightCorner, scale),
+    topLeftCorner: scalePoint(location.topLeftCorner, scale),
+    bottomRightCorner: scalePoint(location.bottomRightCorner, scale),
+    bottomLeftCorner: scalePoint(location.bottomLeftCorner, scale),
+    topRightFinderPattern: scalePoint(location.topRightFinderPattern, scale),
+    topLeftFinderPattern: scalePoint(location.topLeftFinderPattern, scale),
+    bottomLeftFinderPattern: scalePoint(location.bottomLeftFinderPattern, scale)
+  };
+
+  if (location.bottomRightAlignmentPattern) {
+    scaled.bottomRightAlignmentPattern = scalePoint(location.bottomRightAlignmentPattern, scale);
+  }
+
+  return scaled;
+}
+
+function scalePoint(point: { x: number; y: number }, scale: number): { x: number; y: number } {
+  return {
+    x: Number((point.x / scale).toFixed(2)),
+    y: Number((point.y / scale).toFixed(2))
+  };
 }
 
 async function detectWithNativeBarcodeDetector(imageData: ImageData, currentTimeSeconds: number): Promise<TimedEvidence[]> {

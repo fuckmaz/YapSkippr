@@ -98,6 +98,25 @@ function makeQrImageData(value: string, scale: number): ImageData {
   return imageData;
 }
 
+function drawImageData(target: ImageData, source: ImageData, left: number, top: number): void {
+  for (let y = 0; y < source.height; y += 1) {
+    const targetY = top + y;
+    if (targetY < 0 || targetY >= target.height) continue;
+
+    for (let x = 0; x < source.width; x += 1) {
+      const targetX = left + x;
+      if (targetX < 0 || targetX >= target.width) continue;
+
+      const sourceOffset = (y * source.width + x) * 4;
+      const targetOffset = (targetY * target.width + targetX) * 4;
+      target.data[targetOffset] = source.data[sourceOffset] ?? 0;
+      target.data[targetOffset + 1] = source.data[sourceOffset + 1] ?? 0;
+      target.data[targetOffset + 2] = source.data[sourceOffset + 2] ?? 0;
+      target.data[targetOffset + 3] = source.data[sourceOffset + 3] ?? 255;
+    }
+  }
+}
+
 beforeEach(() => {
   Reflect.deleteProperty(globalThis, 'BarcodeDetector');
 });
@@ -120,7 +139,14 @@ test('returns QR evidence from jsqr fallback results', async () => {
     source: 'frame-qr-code',
     kind: 'ad-read-presence',
     startSeconds: 12,
-    raw: { value: 'https://sponsor.example/offer', detector: 'jsqr' }
+    raw: {
+      value: 'https://sponsor.example/offer',
+      detector: 'jsqr',
+      location: {
+        topLeftCorner: expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) }),
+        bottomRightCorner: expect.objectContaining({ x: expect.any(Number), y: expect.any(Number) })
+      }
+    }
   });
   expect(evidence[0]?.confidence).toBeGreaterThanOrEqual(0.8);
 });
@@ -132,6 +158,18 @@ test('decodes low-resolution QR codes by retrying with nearest-neighbor upscalin
   expect(evidence[0]?.raw).toMatchObject({
     value: 'https://x.co/y',
     detector: 'jsqr-upscaled'
+  });
+});
+
+test('decodes small QR overlays embedded inside a larger video frame', async () => {
+  const frame = makeImageData(1280, 720, 24);
+  drawImageData(frame, makeQrImageData('https://x.co/y', 1), 1190, 48);
+
+  const evidence = await detectQrCue(frame, 24);
+
+  expect(evidence).toHaveLength(1);
+  expect(evidence[0]?.raw).toMatchObject({
+    value: 'https://x.co/y'
   });
 });
 
