@@ -178,6 +178,18 @@ Set `ALLOWED_EXTENSION_ORIGINS` as a comma-separated allow list for browser-exte
 ALLOWED_EXTENSION_ORIGINS=chrome-extension://*,moz-extension://*,https://admin.example.com
 ```
 
+Production hardening settings:
+
+| Variable | Default | Purpose |
+| --- | ---: | --- |
+| `SERVER_BODY_LIMIT_BYTES` | `262144` | Caps JSON request size before validation. |
+| `FEEDBACK_RATE_LIMIT_MAX` | `60` | Max public feedback submissions per rate-limit window and client IP. |
+| `FEEDBACK_RATE_LIMIT_WINDOW_MS` | `60000` | Feedback rate-limit window length. |
+| `ADMIN_SESSION_RATE_LIMIT_MAX` | `10` | Max admin login/session attempts per window and client IP. |
+| `ADMIN_SESSION_RATE_LIMIT_WINDOW_MS` | `60000` | Admin session rate-limit window length. |
+
+Rate-limited responses return HTTP `429` with `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` headers. The Docker image and compose service also include a `/healthz` healthcheck for reverse proxies and host monitoring.
+
 ## Project Structure
 
 ```text

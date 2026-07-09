@@ -50,6 +50,74 @@ describe('YapSkippr server API', () => {
     await app.close();
   });
 
+  test('rejects oversized request bodies before feedback validation', async () => {
+    const app = await buildServer({ adminToken: 'secret', bodyLimitBytes: 512 });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({ transcriptContext: 'x'.repeat(2_000) })
+    });
+
+    expect(response.statusCode).toBe(413);
+
+    await app.close();
+  });
+
+  test('rate limits public feedback submissions with retry headers', async () => {
+    const app = await buildServer({
+      adminToken: 'secret',
+      feedbackRateLimit: { max: 2, windowMs: 60_000 }
+    });
+
+    const first = await app.inject({ method: 'POST', url: '/api/v1/feedback', payload: feedbackFixture({ occurrenceId: 'rate-limit-1' }) });
+    const second = await app.inject({ method: 'POST', url: '/api/v1/feedback', payload: feedbackFixture({ occurrenceId: 'rate-limit-2' }) });
+    const limited = await app.inject({ method: 'POST', url: '/api/v1/feedback', payload: feedbackFixture({ occurrenceId: 'rate-limit-3' }) });
+
+    expect(first.statusCode).toBe(201);
+    expect(second.statusCode).toBe(201);
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers['retry-after']).toBe('60');
+    expect(limited.headers['x-ratelimit-limit']).toBe('2');
+    expect(limited.headers['x-ratelimit-remaining']).toBe('0');
+    expect(limited.json()).toMatchObject({
+      ok: false,
+      error: 'Too many feedback submissions. Try again later.'
+    });
+
+    await app.close();
+  });
+
+  test('rate limits admin session attempts with retry headers', async () => {
+    const app = await buildServer({
+      adminToken: 'secret',
+      adminSessionRateLimit: { max: 1, windowMs: 60_000 }
+    });
+
+    const first = await app.inject({
+      method: 'POST',
+      url: '/admin/session',
+      payload: { token: 'wrong' }
+    });
+    const limited = await app.inject({
+      method: 'POST',
+      url: '/admin/session',
+      payload: { token: 'still-wrong' }
+    });
+
+    expect(first.statusCode).toBe(401);
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers['retry-after']).toBe('60');
+    expect(limited.headers['x-ratelimit-limit']).toBe('1');
+    expect(limited.headers['x-ratelimit-remaining']).toBe('0');
+    expect(limited.json()).toMatchObject({
+      ok: false,
+      error: 'Too many admin session attempts. Try again later.'
+    });
+
+    await app.close();
+  });
+
   test('persists feedback v2 payloads and protects admin data', async () => {
     const app = await buildServer({ adminToken: 'secret' });
 

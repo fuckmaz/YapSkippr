@@ -15,7 +15,20 @@ import type { ReviewLabel, YapSkipprRepository } from './store/types.js';
 export interface BuildServerOptions {
   adminToken?: string;
   allowedExtensionOrigins?: readonly string[];
+  bodyLimitBytes?: number;
+  feedbackRateLimit?: Partial<RateLimitOptions>;
+  adminSessionRateLimit?: Partial<RateLimitOptions>;
   repository?: YapSkipprRepository;
+}
+
+interface RateLimitOptions {
+  max: number;
+  windowMs: number;
+}
+
+interface RateLimitBucket {
+  count: number;
+  resetAt: number;
 }
 
 const reviewSchema = z.object({
@@ -23,11 +36,18 @@ const reviewSchema = z.object({
   notes: z.string().optional()
 });
 
+const defaultBodyLimitBytes = 256 * 1024;
+const defaultFeedbackRateLimit: RateLimitOptions = { max: 60, windowMs: 60_000 };
+const defaultAdminSessionRateLimit: RateLimitOptions = { max: 10, windowMs: 60_000 };
+
 export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
   const adminToken = resolveAdminToken(options.adminToken);
   const repository = options.repository ?? (process.env.DATABASE_URL ? createPostgresRepository(process.env.DATABASE_URL) : createMemoryRepository());
   const allowedOrigins = options.allowedExtensionOrigins ?? parseAllowedOrigins(process.env.ALLOWED_EXTENSION_ORIGINS);
-  const app = Fastify({ logger: false });
+  const bodyLimit = options.bodyLimitBytes ?? positiveIntegerFromEnv('SERVER_BODY_LIMIT_BYTES', defaultBodyLimitBytes);
+  const feedbackRateLimit = resolveRateLimit(options.feedbackRateLimit, defaultFeedbackRateLimit, 'FEEDBACK_RATE_LIMIT');
+  const adminSessionRateLimit = resolveRateLimit(options.adminSessionRateLimit, defaultAdminSessionRateLimit, 'ADMIN_SESSION_RATE_LIMIT');
+  const app = Fastify({ logger: false, bodyLimit });
 
   await app.register(cors, {
     origin: (origin, callback) => {
@@ -51,14 +71,18 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     await repository.close?.();
   });
 
-  app.post('/api/v1/feedback', async (request, reply) => {
-    const parsed = feedbackPayloadV2Schema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.status(400).send({ ok: false, error: 'Invalid feedback payload.', details: parsed.error.flatten() });
+  app.post(
+    '/api/v1/feedback',
+    { preHandler: createRateLimitPreHandler(feedbackRateLimit, 'Too many feedback submissions. Try again later.') },
+    async (request, reply) => {
+      const parsed = feedbackPayloadV2Schema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ ok: false, error: 'Invalid feedback payload.', details: parsed.error.flatten() });
+      }
+      const record = await repository.createFeedback(parsed.data);
+      return reply.status(201).send({ ok: true, feedbackId: record.id });
     }
-    const record = await repository.createFeedback(parsed.data);
-    return reply.status(201).send({ ok: true, feedbackId: record.id });
-  });
+  );
 
   app.get('/api/v1/model/latest', async (_request, reply) => {
     const model = await repository.getPromotedModel();
@@ -66,7 +90,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     return reply.send(model);
   });
 
-  app.post('/admin/session', async (request, reply) => {
+  app.post('/admin/session', { preHandler: createRateLimitPreHandler(adminSessionRateLimit, 'Too many admin session attempts. Try again later.') }, async (request, reply) => {
     const token = extractAdminSessionToken(request.body);
     if (token !== adminToken) {
       return reply.status(401).send({ ok: false, error: 'Invalid admin token.' });
@@ -208,6 +232,58 @@ function parseCookies(cookieHeader: string | undefined): Record<string, string> 
       return [[key, valueParts.join('=')]];
     })
   );
+}
+
+function createRateLimitPreHandler(options: RateLimitOptions, error: string) {
+  const buckets = new Map<string, RateLimitBucket>();
+
+  return async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const now = Date.now();
+    const key = rateLimitKey(request);
+    let bucket = buckets.get(key);
+
+    if (!bucket || bucket.resetAt <= now) {
+      bucket = { count: 0, resetAt: now + options.windowMs };
+      buckets.set(key, bucket);
+    }
+
+    if (bucket.count >= options.max) {
+      setRateLimitHeaders(reply, options, 0, bucket.resetAt, now);
+      await reply.status(429).send({ ok: false, error });
+      return;
+    }
+
+    bucket.count += 1;
+    setRateLimitHeaders(reply, options, Math.max(0, options.max - bucket.count), bucket.resetAt, now);
+  };
+}
+
+function setRateLimitHeaders(reply: FastifyReply, options: RateLimitOptions, remaining: number, resetAt: number, now: number): void {
+  reply.header('x-ratelimit-limit', String(options.max));
+  reply.header('x-ratelimit-remaining', String(remaining));
+  reply.header('x-ratelimit-reset', String(Math.ceil(resetAt / 1000)));
+  if (remaining === 0) reply.header('retry-after', String(Math.max(1, Math.ceil((resetAt - now) / 1000))));
+}
+
+function rateLimitKey(request: FastifyRequest): string {
+  const forwarded = request.headers['x-forwarded-for'];
+  const forwardedValue = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  const forwardedIp = forwardedValue?.split(',')[0]?.trim();
+  return forwardedIp || request.ip || 'unknown';
+}
+
+function resolveRateLimit(overrides: Partial<RateLimitOptions> | undefined, defaults: RateLimitOptions, envPrefix: string): RateLimitOptions {
+  return {
+    max: overrides?.max ?? positiveIntegerFromEnv(`${envPrefix}_MAX`, defaults.max),
+    windowMs: overrides?.windowMs ?? positiveIntegerFromEnv(`${envPrefix}_WINDOW_MS`, defaults.windowMs)
+  };
+}
+
+function positiveIntegerFromEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function compareModelMetrics(metrics: Record<string, number>, baseline: Record<string, number>): Record<string, number> {
