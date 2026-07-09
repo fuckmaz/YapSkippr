@@ -149,10 +149,19 @@ function formatVideoTime(current: number | null, duration: number | null): strin
 }
 
 function formatModelText(status: ScanStatusSnapshot): string {
-  if (status.model.status !== 'loaded' || !status.model.modelId || !status.model.modelVersion) {
-    return 'Heuristic fallback';
+  if (status.model.status === 'loaded' && status.model.modelId && status.model.modelVersion) {
+    return `${status.model.modelId} · ${status.model.modelVersion} · ${status.model.modelSource}`;
   }
-  return `${status.model.modelId} · ${status.model.modelVersion} · ${status.model.modelSource}`;
+
+  const suffix = formatModelMessageSuffix(status.model.message);
+  if (status.model.status === 'error') return `Model error${suffix}`;
+  return `Heuristic fallback${suffix}`;
+}
+
+function formatModelMessageSuffix(message: string): string {
+  const trimmed = message.trim();
+  if (!trimmed || trimmed === 'Heuristic confidence only.') return '';
+  return ` · ${trimmed}`;
 }
 
 function formatCandidateDetail(candidate: ScanStatusSnapshot['candidates'][number]): string {

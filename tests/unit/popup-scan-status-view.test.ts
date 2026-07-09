@@ -1,5 +1,5 @@
 import { createPopupScanStatusView } from '../../src/ui/popup-scan-status-view';
-import type { ScanStatusSnapshot } from '../../src/core/scan-status';
+import { createIdleScanStatus, type ScanStatusSnapshot } from '../../src/core/scan-status';
 
 test('formats a running scan snapshot for the popup', () => {
   const snapshot: ScanStatusSnapshot = {
@@ -171,6 +171,38 @@ test('formats idle scan state for the popup', () => {
     updatedText: 'Updated 1m ago',
     isRunning: false
   });
+});
+
+test('includes active model fallback and error reasons in popup text', () => {
+  const fallbackSnapshot: ScanStatusSnapshot = {
+    ...createIdleScanStatus(1_000),
+    platformId: 'youtube',
+    phase: 'frames',
+    message: 'Analyzing frames...',
+    model: {
+      modelId: null,
+      modelVersion: null,
+      modelSource: 'fallback',
+      featureSchemaVersion: null,
+      status: 'fallback',
+      message: 'No feedback endpoint configured; using heuristic confidence.'
+    }
+  };
+
+  expect(createPopupScanStatusView(fallbackSnapshot, 2_000).modelText)
+    .toBe('Heuristic fallback · No feedback endpoint configured; using heuristic confidence.');
+
+  const errorSnapshot: ScanStatusSnapshot = {
+    ...fallbackSnapshot,
+    model: {
+      ...fallbackSnapshot.model,
+      status: 'error',
+      message: 'Model unavailable: Model endpoint returned HTTP 500.'
+    }
+  };
+
+  expect(createPopupScanStatusView(errorSnapshot, 2_000).modelText)
+    .toBe('Model error · Model unavailable: Model endpoint returned HTTP 500.');
 });
 
 test('labels stale running scan state in the popup', () => {
