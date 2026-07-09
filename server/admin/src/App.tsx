@@ -26,7 +26,8 @@ import {
   ThumbsUp,
   TimerReset,
   TrainTrack,
-  XCircle
+  XCircle,
+  type LucideIcon
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -139,6 +140,16 @@ interface DashboardData {
   trainingRuns: TrainingRun[];
 }
 
+interface GlobalSearchResult {
+  id: string;
+  page: Page;
+  category: string;
+  title: string;
+  meta: string;
+  detail: string;
+  icon: LucideIcon;
+}
+
 const themeStorageKey = 'yapskippr.adminTheme';
 
 const navigation = [
@@ -155,6 +166,7 @@ export function App(): JSX.Element {
   const [token, setToken] = useState(() => localStorage.getItem('yapskippr.adminToken') ?? '');
   const [sessionAuthenticated, setSessionAuthenticated] = useState(false);
   const [themePreference, setThemePreference] = useThemePreference();
+  const [globalQuery, setGlobalQuery] = useState('');
   const [data, setData] = useState<DashboardData>({
     summary: null,
     feedback: [],
@@ -166,6 +178,7 @@ export function App(): JSX.Element {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const hasAuth = Boolean(token) || sessionAuthenticated;
+  const globalResults = useMemo(() => buildGlobalSearchResults(data, globalQuery), [data, globalQuery]);
 
   async function refresh(): Promise<void> {
     if (!hasAuth) return;
@@ -219,6 +232,11 @@ export function App(): JSX.Element {
     setSessionAuthenticated(true);
   }
 
+  function openSearchResult(target: Page): void {
+    setPage(target);
+    setGlobalQuery('');
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -253,7 +271,13 @@ export function App(): JSX.Element {
         <header className="topbar">
           <label className="search-field">
             <Search size={17} />
-            <input type="search" placeholder="Search videos, feedback, or models..." />
+            <input
+              aria-label="Search dashboard"
+              type="search"
+              value={globalQuery}
+              onChange={(event) => setGlobalQuery(event.target.value)}
+              placeholder="Search videos, feedback, or models..."
+            />
           </label>
           <div className="topbar-actions">
             <ThemeSwitch value={themePreference} onChange={setThemePreference} />
@@ -266,6 +290,9 @@ export function App(): JSX.Element {
 
         {!hasAuth ? <LoginPanel onSave={saveToken} /> : null}
         {error ? <div className="alert"><XCircle size={18} /> {error}</div> : null}
+        {hasAuth && globalQuery.trim() ? (
+          <GlobalSearchResults query={globalQuery} results={globalResults} onOpen={openSearchResult} />
+        ) : null}
 
         {hasAuth ? (
           <>
@@ -279,6 +306,54 @@ export function App(): JSX.Element {
         ) : null}
       </main>
     </div>
+  );
+}
+
+function GlobalSearchResults({
+  query,
+  results,
+  onOpen
+}: {
+  query: string;
+  results: GlobalSearchResult[];
+  onOpen: (page: Page) => void;
+}): JSX.Element {
+  return (
+    <section className="global-search-panel" aria-live="polite">
+      <div className="global-search-head">
+        <div>
+          <span>Global search</span>
+          <h2>Search Results</h2>
+        </div>
+        <strong>{results.length} matches</strong>
+      </div>
+      {results.length ? (
+        <div className="global-search-results">
+          {results.map((result) => {
+            const Icon = result.icon;
+            return (
+              <button
+                key={result.id}
+                type="button"
+                className="global-search-result"
+                aria-label={`Open ${result.category.toLowerCase()} ${result.title}`}
+                onClick={() => onOpen(result.page)}
+              >
+                <span className="result-icon"><Icon size={16} /></span>
+                <span>
+                  <small>{result.category} · {result.meta}</small>
+                  <strong>{result.title}</strong>
+                  <em>{result.detail}</em>
+                </span>
+                <ChevronRight size={16} />
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyState title={`No matches for "${query.trim()}"`} detail="Try a video ID, occurrence ID, source, model ID, or review label." />
+      )}
+    </section>
   );
 }
 
@@ -561,26 +636,7 @@ function VideosTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
   const [sort, setSort] = useState('feedback-desc');
   const sources = useMemo(() => uniqueSources(items), [items]);
   const videos = useMemo(() => {
-    const map = new Map<string, VideoSummaryRow>();
-    for (const item of items) {
-      const id = item.payload.videoId ?? 'unknown';
-      const entry = map.get(id) ?? {
-        videoId: id,
-        url: item.payload.videoUrl,
-        feedback: 0,
-        pending: 0,
-        reviewed: 0,
-        sources: new Set<string>(),
-        latestReceivedAt: item.receivedAt
-      };
-      entry.feedback += 1;
-      if (!item.review) entry.pending += 1;
-      else entry.reviewed += 1;
-      entry.sources.add(feedbackSource(item));
-      if (new Date(item.receivedAt).getTime() > new Date(entry.latestReceivedAt).getTime()) entry.latestReceivedAt = item.receivedAt;
-      map.set(id, entry);
-    }
-    return [...map.values()]
+    return summarizeVideos(items)
       .filter((video) => matchesQuery({ videoId: video.videoId, url: video.url, sources: [...video.sources] }, query))
       .filter((video) => sourceFilter === 'all' || video.sources.has(sourceFilter))
       .sort((a, b) => compareVideos(a, b, sort));
@@ -878,6 +934,100 @@ function sourceLabel(source: string): string {
     'frame-progress-bar': 'Progress bars'
   };
   return labels[source] ?? source.replace(/-/g, ' ');
+}
+
+function summarizeVideos(items: readonly FeedbackRecord[]): VideoSummaryRow[] {
+  const map = new Map<string, VideoSummaryRow>();
+  for (const item of items) {
+    const id = item.payload.videoId ?? 'unknown';
+    const entry = map.get(id) ?? {
+      videoId: id,
+      url: item.payload.videoUrl,
+      feedback: 0,
+      pending: 0,
+      reviewed: 0,
+      sources: new Set<string>(),
+      latestReceivedAt: item.receivedAt
+    };
+    entry.feedback += 1;
+    if (!item.review) entry.pending += 1;
+    else entry.reviewed += 1;
+    entry.sources.add(feedbackSource(item));
+    if (dateValue(item.receivedAt) > dateValue(entry.latestReceivedAt)) entry.latestReceivedAt = item.receivedAt;
+    map.set(id, entry);
+  }
+  return [...map.values()];
+}
+
+function buildGlobalSearchResults(data: DashboardData, query: string): GlobalSearchResult[] {
+  const normalized = query.trim();
+  if (!normalized) return [];
+
+  const feedbackResults = data.feedback
+    .filter((item) => matchesQuery({
+      id: item.id,
+      videoId: item.payload.videoId,
+      videoUrl: item.payload.videoUrl,
+      occurrenceId: item.payload.occurrenceId,
+      source: item.payload.source,
+      summary: item.payload.summary,
+      reason: item.payload.reason,
+      feedback: item.payload.feedback,
+      review: item.review?.label,
+      notes: item.payload.notes,
+      transcriptContext: item.payload.transcriptContext
+    }, normalized))
+    .slice(0, 5)
+    .map((item): GlobalSearchResult => ({
+      id: `feedback:${item.id}`,
+      page: 'feedback',
+      category: 'Feedback',
+      title: item.payload.occurrenceId,
+      meta: item.payload.videoId ?? 'unknown video',
+      detail: `${sourceLabel(feedbackSource(item))} · ${formatTime(item.payload.startSeconds)} · ${item.payload.summary}`,
+      icon: Table2
+    }));
+
+  const videoResults = summarizeVideos(data.feedback)
+    .filter((video) => matchesQuery({ videoId: video.videoId, url: video.url, sources: [...video.sources] }, normalized))
+    .slice(0, 4)
+    .map((video): GlobalSearchResult => ({
+      id: `video:${video.videoId}`,
+      page: 'videos',
+      category: 'Video',
+      title: video.videoId,
+      meta: `${video.feedback} feedback · ${video.pending} pending`,
+      detail: [...video.sources].map(sourceLabel).join(', ') || 'No sources recorded',
+      icon: Film
+    }));
+
+  const modelResults = data.models
+    .filter((model) => matchesQuery(model, normalized))
+    .slice(0, 4)
+    .map((model): GlobalSearchResult => ({
+      id: `model:${model.modelId}`,
+      page: 'models',
+      category: 'Model',
+      title: model.modelId,
+      meta: model.modelVersion,
+      detail: `F1 ${formatMetric(model.metrics.f1)} · accuracy ${formatMetric(model.metrics.accuracy)}`,
+      icon: Layers
+    }));
+
+  const trainingResults = data.trainingRuns
+    .filter((run) => matchesQuery(run, normalized))
+    .slice(0, 3)
+    .map((run): GlobalSearchResult => ({
+      id: `training:${run.id}`,
+      page: 'training',
+      category: 'Training',
+      title: run.modelId,
+      meta: run.status,
+      detail: `${run.datasetSize} examples · ${run.validationSize} validation`,
+      icon: TrainTrack
+    }));
+
+  return [...feedbackResults, ...videoResults, ...modelResults, ...trainingResults].slice(0, 12);
 }
 
 function matchesQuery(value: unknown, query: string): boolean {

@@ -254,6 +254,90 @@ nav em {
   gap: 10px;
 }
 
+.global-search-panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  box-shadow: var(--shadow);
+}
+
+.global-search-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.global-search-head h2 {
+  margin: 2px 0 0;
+  font-size: 16px;
+  letter-spacing: 0;
+}
+
+.global-search-head span,
+.global-search-head strong,
+.global-search-result small,
+.global-search-result em {
+  color: var(--muted);
+}
+
+.global-search-head span,
+.global-search-head strong,
+.global-search-result small {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.global-search-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+}
+
+.global-search-result {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 78px;
+  padding: 10px;
+  background: var(--surface-2);
+  text-align: left;
+}
+
+.global-search-result > span:not(.result-icon) {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.result-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid color-mix(in srgb, var(--green), var(--border) 55%);
+  border-radius: 7px;
+  color: var(--green);
+}
+
+.global-search-result strong,
+.global-search-result em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.global-search-result em {
+  font-style: normal;
+}
+
 .theme-switch,
 .icon-button {
   display: inline-flex;

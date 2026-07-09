@@ -46,6 +46,15 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.getByRole('heading', { name: 'Model Performance' }));
     await expectVisible(page, page.getByRole('heading', { name: 'All Data Available' }));
 
+    await page.getByLabel('Search dashboard').fill('candidate-link');
+    await expectVisible(page, page.getByRole('heading', { name: 'Search Results' }));
+    await expectVisible(page, page.getByText('candidate-link').first());
+    await expectVisible(page, page.getByText('Feedback · video-b').first());
+    await page.getByRole('button', { name: 'Open feedback candidate-link' }).click();
+    await expectVisible(page, page.getByRole('heading', { name: 'Feedback' }));
+    await expectVisible(page, page.getByRole('cell', { name: 'candidate-link' }));
+    await page.getByRole('button', { name: 'Overview' }).click();
+
     expect(await page.evaluate(() => localStorage.getItem('yapskippr.adminToken'))).toBeNull();
     const initialTheme = await page.evaluate(() => document.documentElement.dataset.theme);
     await page.getByRole('button', { name: /system|dark|light/i }).click();
