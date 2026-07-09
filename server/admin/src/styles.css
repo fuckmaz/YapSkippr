@@ -521,6 +521,57 @@ nav em {
   gap: 12px;
 }
 
+.quality-list,
+.dataset-summary {
+  display: grid;
+  gap: 9px;
+}
+
+.quality-list div,
+.dataset-summary div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+
+.quality-list strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quality-list span,
+.quality-list small,
+.quality-list em,
+.dataset-summary span,
+.dataset-summary p {
+  margin: 0;
+  color: var(--muted);
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.quality-list em {
+  color: var(--green);
+  font-weight: 800;
+}
+
+.dataset-summary {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.dataset-summary p {
+  grid-column: 1 / -1;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+
 .queue-card div,
 .metric-strip div {
   display: grid;
@@ -1257,6 +1308,7 @@ tr:last-child td {
   .feedback-detail-grid,
   .promoted-model-summary,
   .readiness-grid,
+  .dataset-summary,
   .metric-grid {
     grid-template-columns: 1fr;
   }

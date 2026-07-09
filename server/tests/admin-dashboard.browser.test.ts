@@ -43,7 +43,10 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.getByText('2', { exact: true }).first());
     await expectVisible(page, page.getByRole('heading', { name: 'Review Queue' }));
     await expectVisible(page, page.getByRole('heading', { name: 'Detector Source Distribution' }));
+    await expectVisible(page, page.getByRole('heading', { name: 'Detector Quality' }));
     await expectVisible(page, page.getByRole('heading', { name: 'Model Performance' }));
+    await expectVisible(page, page.getByRole('heading', { name: 'Training Dataset' }));
+    await expectVisible(page, page.getByText('Compatible examples', { exact: true }));
     await expectVisible(page, page.getByRole('heading', { name: 'All Data Available' }));
 
     await page.getByLabel('Search dashboard').fill('candidate-link');

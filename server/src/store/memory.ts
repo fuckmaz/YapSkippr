@@ -1,6 +1,7 @@
 import type { FeedbackPayloadV2 } from '../feedback/schema.js';
 import { summarizeTrainingReadiness } from '../model/training-readiness.js';
 import type { CandidateModelArtifact, LabeledTrainingExample } from '../model/types.js';
+import { buildDetectorQuality } from './detector-quality.js';
 import type {
   DashboardSummary,
   FeedbackRecord,
@@ -158,6 +159,7 @@ export function createMemoryRepository(now: () => string = () => new Date().toIS
         modelVersions: models.length,
         promotedModel,
         detectorSourceDistribution,
+        detectorQuality: buildDetectorQuality(feedback),
         feedbackLabelDistribution,
         reviewThroughput: buildReviewThroughput(reviewed),
         modelPerformance: promotedModel?.metrics ?? {},

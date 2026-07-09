@@ -476,6 +476,96 @@ describe('YapSkippr server API', () => {
     await app.close();
   });
 
+  test('summarizes detector quality by source', async () => {
+    const app = await buildServer({ adminToken: 'secret' });
+
+    const transcriptPositive = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'candidate-transcript-quality',
+        videoId: 'video-quality-a',
+        source: 'transcript'
+      })
+    });
+    const linkPositive = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'candidate-link-quality-positive',
+        videoId: 'video-quality-b',
+        source: 'frame-visible-link'
+      })
+    });
+    const linkFalsePositive = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'candidate-link-quality-negative',
+        videoId: 'video-quality-c',
+        source: 'frame-visible-link',
+        feedback: 'false_positive'
+      })
+    });
+
+    for (const [response, label] of [
+      [transcriptPositive, 'positive'],
+      [linkPositive, 'positive'],
+      [linkFalsePositive, 'false_positive']
+    ] as const) {
+      expect(response.statusCode).toBe(201);
+      const review = await app.inject({
+        method: 'POST',
+        url: `/admin/feedback/${response.json().feedbackId}/review`,
+        headers: { 'x-admin-token': 'secret' },
+        payload: { label }
+      });
+      expect(review.statusCode).toBe(200);
+    }
+
+    const summary = await app.inject({
+      method: 'GET',
+      url: '/admin/api/summary',
+      headers: { 'x-admin-token': 'secret' }
+    });
+
+    expect(summary.statusCode).toBe(200);
+    expect(summary.json().detectorQuality).toEqual([
+      {
+        source: 'frame-visible-link',
+        total: 2,
+        reviewed: 2,
+        pending: 0,
+        positive: 1,
+        falsePositive: 1,
+        wrongTiming: 0,
+        duplicate: 0,
+        ignored: 0,
+        needsMoreData: 0,
+        trainablePositive: 1,
+        trainableNegative: 1,
+        positiveRate: 0.5
+      },
+      {
+        source: 'transcript',
+        total: 1,
+        reviewed: 1,
+        pending: 0,
+        positive: 1,
+        falsePositive: 0,
+        wrongTiming: 0,
+        duplicate: 0,
+        ignored: 0,
+        needsMoreData: 0,
+        trainablePositive: 1,
+        trainableNegative: 0,
+        positiveRate: 1
+      }
+    ]);
+
+    await app.close();
+  });
+
   test('rejects rollback for models that are not currently promoted', async () => {
     const repository = createMemoryRepository();
     await repository.saveModel(modelArtifact('model-a', '2026.07.01.000001'));

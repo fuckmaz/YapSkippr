@@ -124,6 +124,22 @@ interface TrainingReadiness {
   blocker: string | null;
 }
 
+interface DetectorQualityRow {
+  source: string;
+  total: number;
+  reviewed: number;
+  pending: number;
+  positive: number;
+  falsePositive: number;
+  wrongTiming: number;
+  duplicate: number;
+  ignored: number;
+  needsMoreData: number;
+  trainablePositive: number;
+  trainableNegative: number;
+  positiveRate: number;
+}
+
 interface Summary {
   totalFeedback: number;
   reviewedFeedback: number;
@@ -131,6 +147,7 @@ interface Summary {
   modelVersions: number;
   promotedModel: ModelArtifact | null;
   detectorSourceDistribution: Record<string, number>;
+  detectorQuality: DetectorQualityRow[];
   feedbackLabelDistribution: Record<string, number>;
   reviewThroughput: Array<{ date: string; reviewed: number }>;
   modelPerformance: Record<string, number>;
@@ -377,6 +394,7 @@ function Overview({ data, onPageChange }: { data: DashboardData; onPageChange: (
   const summary = data.summary;
   const sourceRows = Object.entries(summary?.detectorSourceDistribution ?? {});
   const labelRows = Object.entries(summary?.feedbackLabelDistribution ?? {});
+  const readiness = summary?.trainingReadiness ?? null;
 
   return (
     <section className="page-grid">
@@ -394,6 +412,9 @@ function Overview({ data, onPageChange }: { data: DashboardData; onPageChange: (
         </Panel>
         <Panel title="Detector Source Distribution" action="All time">
           <BarList rows={sourceRows} />
+        </Panel>
+        <Panel title="Detector Quality" action="Reviewed">
+          <DetectorQualityList rows={summary?.detectorQuality ?? []} />
         </Panel>
         <Panel title="Review Queue">
           <div className="queue-card">
@@ -415,6 +436,9 @@ function Overview({ data, onPageChange }: { data: DashboardData; onPageChange: (
         <Panel title="Model Performance">
           <MetricStrip metrics={summary?.modelPerformance ?? {}} />
         </Panel>
+        <Panel title="Training Dataset" action={readiness ? `Schema ${readiness.featureSchemaVersion}` : undefined}>
+          <TrainingDatasetSummary readiness={readiness} />
+        </Panel>
         <Panel title="All Data Available">
           <div className="placeholder-grid">
             <span>Feedback payloads</span>
@@ -423,10 +447,50 @@ function Overview({ data, onPageChange }: { data: DashboardData; onPageChange: (
             <span>Training runs</span>
             <span>Promotion history</span>
             <span>Detector evidence</span>
+            <span>Detector quality</span>
           </div>
         </Panel>
       </div>
     </section>
+  );
+}
+
+function DetectorQualityList({ rows }: { rows: DetectorQualityRow[] }): JSX.Element {
+  if (rows.length === 0) return <EmptyState title="No detector reviews yet" detail="Reviewed feedback will populate source quality metrics." />;
+
+  return (
+    <div className="quality-list">
+      {rows.map((row) => (
+        <div key={row.source}>
+          <strong>{sourceLabel(row.source)}</strong>
+          <span>{row.reviewed.toLocaleString()} reviewed · {row.pending.toLocaleString()} pending</span>
+          <em>{formatPercent(row.positiveRate)} positive</em>
+          <small>{row.trainablePositive.toLocaleString()} positive / {row.trainableNegative.toLocaleString()} negative trainable</small>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TrainingDatasetSummary({ readiness }: { readiness: TrainingReadiness | null }): JSX.Element {
+  if (!readiness) return <EmptyState title="No training dataset data" detail="Refresh after feedback has been reviewed." />;
+
+  return (
+    <div className="dataset-summary">
+      <div>
+        <span>Compatible examples</span>
+        <strong>{readiness.compatibleExamples.toLocaleString()}</strong>
+      </div>
+      <div>
+        <span>Incompatible examples</span>
+        <strong>{readiness.incompatibleExamples.toLocaleString()}</strong>
+      </div>
+      <div>
+        <span>Label balance</span>
+        <strong>{readiness.positiveExamples.toLocaleString()} / {readiness.negativeExamples.toLocaleString()}</strong>
+      </div>
+      <p>{readiness.blocker ?? 'Ready to train a schema-compatible model.'}</p>
+    </div>
   );
 }
 

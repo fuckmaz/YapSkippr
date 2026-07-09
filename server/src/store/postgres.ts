@@ -3,6 +3,7 @@ import { Pool, type PoolClient } from 'pg';
 import type { FeedbackPayloadV2 } from '../feedback/schema.js';
 import { summarizeTrainingReadiness } from '../model/training-readiness.js';
 import type { CandidateModelArtifact, LabeledTrainingExample } from '../model/types.js';
+import { buildDetectorQuality } from './detector-quality.js';
 import type {
   DashboardSummary,
   FeedbackRecord,
@@ -203,6 +204,7 @@ export function createPostgresRepository(databaseUrl: string): YapSkipprReposito
         modelVersions: models.length,
         promotedModel,
         detectorSourceDistribution: countBy(feedback, (item) => item.payload.source ?? item.payload.occurrenceType),
+        detectorQuality: buildDetectorQuality(feedback),
         feedbackLabelDistribution: countBy(reviewed, (item) => item.review?.label ?? 'pending'),
         reviewThroughput: buildReviewThroughput(reviewed),
         modelPerformance: promotedModel?.metrics ?? {},

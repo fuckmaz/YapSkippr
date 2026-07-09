@@ -43,10 +43,27 @@ export interface DashboardSummary {
   modelVersions: number;
   promotedModel: CandidateModelArtifact | null;
   detectorSourceDistribution: Record<string, number>;
+  detectorQuality: DetectorQualityRow[];
   feedbackLabelDistribution: Record<string, number>;
   reviewThroughput: Array<{ date: string; reviewed: number }>;
   modelPerformance: Record<string, number>;
   trainingReadiness: TrainingReadinessSummary;
+}
+
+export interface DetectorQualityRow {
+  source: string;
+  total: number;
+  reviewed: number;
+  pending: number;
+  positive: number;
+  falsePositive: number;
+  wrongTiming: number;
+  duplicate: number;
+  ignored: number;
+  needsMoreData: number;
+  trainablePositive: number;
+  trainableNegative: number;
+  positiveRate: number;
 }
 
 export interface YapSkipprRepository {
