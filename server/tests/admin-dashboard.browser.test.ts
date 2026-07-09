@@ -69,6 +69,13 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.getByText('2', { exact: true }).first());
     await expectVisible(page, page.getByRole('heading', { name: 'Extension Feedback' }));
     await expectVisible(page, page.getByText('Viewer confirmed the visible link report from the popup.'));
+    await expectVisible(page, page.getByLabel('Review queue source filter'));
+    await page.getByLabel('Review queue source filter').selectOption('frame-visible-link');
+    await expectVisible(page, page.locator('.queue-number').getByText('1', { exact: true }));
+    await page.getByLabel('Review queue source filter').selectOption('all');
+    await expectVisible(page, page.locator('.queue-number').getByText('2', { exact: true }));
+    expect(await page.getByRole('button', { name: 'Positive', exact: true }).getAttribute('aria-keyshortcuts')).toBe('1');
+    expect(await page.getByRole('button', { name: 'False positive', exact: true }).getAttribute('aria-keyshortcuts')).toBe('2');
     await page.getByLabel('Admin review notes').click();
     await page.keyboard.type('Needs 1 more pass');
     await page.waitForTimeout(250);
@@ -150,7 +157,7 @@ describe('YapSkippr admin dashboard browser workflow', () => {
 
     await page.getByRole('button', { name: 'Review Queue' }).click();
     const negativeReviewResponse = page.waitForResponse((response) => response.url().includes('/admin/feedback/') && response.url().endsWith('/review'));
-    await page.getByRole('button', { name: 'False positive', exact: true }).click();
+    await page.keyboard.press('2');
     const negativeReview = await negativeReviewResponse;
     expect(negativeReview.status()).toBe(200);
     await expectVisible(page, page.locator('.queue-number').getByText('0', { exact: true }));

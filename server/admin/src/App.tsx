@@ -29,11 +29,27 @@ import {
   XCircle,
   type LucideIcon
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Page = 'overview' | 'review' | 'feedback' | 'videos' | 'models' | 'training';
 type ThemePreference = 'system' | 'dark' | 'light';
 type ReviewLabel = 'positive' | 'false_positive' | 'wrong_timing' | 'duplicate' | 'ignored' | 'needs_more_data';
+
+interface ReviewAction {
+  label: string;
+  value: ReviewLabel;
+  icon: LucideIcon;
+  shortcut: string;
+}
+
+const reviewActions: ReviewAction[] = [
+  { label: 'Positive', value: 'positive', icon: ThumbsUp, shortcut: '1' },
+  { label: 'False positive', value: 'false_positive', icon: ThumbsDown, shortcut: '2' },
+  { label: 'Wrong timing', value: 'wrong_timing', icon: TimerReset, shortcut: '3' },
+  { label: 'Duplicate', value: 'duplicate', icon: Layers, shortcut: '4' },
+  { label: 'Ignored', value: 'ignored', icon: Eye, shortcut: '5' },
+  { label: 'Needs data', value: 'needs_more_data', icon: ListFilter, shortcut: '6' }
+];
 
 interface FeedbackRecord {
   id: string;
@@ -519,12 +535,16 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
   const [selectedSource, setSelectedSource] = useState('all');
   const [busyLabel, setBusyLabel] = useState<ReviewLabel | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
-  const pending = data.feedback.filter((item) => !item.review && (selectedSource === 'all' || item.payload.source === selectedSource));
+  const submittingReviewRef = useRef(false);
+  const sources = useMemo(() => uniqueSources(data.feedback), [data.feedback]);
+  const pending = data.feedback.filter((item) => !item.review && (selectedSource === 'all' || feedbackSource(item) === selectedSource));
   const current = pending[0];
   const recent = data.feedback.filter((item) => item.review).slice(0, 5);
 
   async function submit(label: ReviewLabel): Promise<void> {
     if (!current) return;
+    if (submittingReviewRef.current) return;
+    submittingReviewRef.current = true;
     setBusyLabel(label);
     try {
       const notes = reviewNotes.trim();
@@ -538,6 +558,7 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
       await onRefresh();
       setReviewNotes('');
     } finally {
+      submittingReviewRef.current = false;
       setBusyLabel(null);
     }
   }
@@ -549,26 +570,22 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
   useEffect(() => {
     function onKey(event: KeyboardEvent): void {
       if (!current) return;
+      if (busyLabel !== null) return;
       if (isEditableShortcutTarget(event.target)) return;
-      const map: Record<string, ReviewLabel> = {
-        '1': 'positive',
-        '2': 'false_positive',
-        '3': 'wrong_timing',
-        '4': 'duplicate',
-        '5': 'ignored',
-        '6': 'needs_more_data'
-      };
-      if (map[event.key]) void submit(map[event.key]);
+      const action = reviewActions.find((item) => item.shortcut === event.key);
+      if (!action) return;
+      event.preventDefault();
+      void submit(action.value);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [current?.id, reviewNotes]);
+  }, [busyLabel, current?.id, reviewNotes]);
 
   return (
     <section className="page-grid">
       <PageTitle title="Review Queue" description="Review one occurrence at a time and advance automatically after each decision." />
       <div className="review-layout">
-        <article className="review-focus">
+        <article className="review-focus" aria-busy={busyLabel !== null}>
           {current ? (
             <>
               <div className="review-head">
@@ -619,12 +636,9 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
                 />
               </label>
               <div className="review-actions">
-                <ReviewButton label="Positive" value="positive" icon={ThumbsUp} busy={busyLabel} onSubmit={submit} />
-                <ReviewButton label="False positive" value="false_positive" icon={ThumbsDown} busy={busyLabel} onSubmit={submit} />
-                <ReviewButton label="Wrong timing" value="wrong_timing" icon={TimerReset} busy={busyLabel} onSubmit={submit} />
-                <ReviewButton label="Duplicate" value="duplicate" icon={Layers} busy={busyLabel} onSubmit={submit} />
-                <ReviewButton label="Ignored" value="ignored" icon={Eye} busy={busyLabel} onSubmit={submit} />
-                <ReviewButton label="Needs data" value="needs_more_data" icon={ListFilter} busy={busyLabel} onSubmit={submit} />
+                {reviewActions.map((action) => (
+                  <ReviewButton key={action.value} action={action} busy={busyLabel} onSubmit={submit} />
+                ))}
               </div>
             </>
           ) : (
@@ -633,24 +647,24 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
         </article>
         <aside className="review-side">
           <Panel title="Queue Progress">
-            <select value={selectedSource} onChange={(event) => setSelectedSource(event.target.value)}>
-              <option value="all">All sources</option>
-              <option value="transcript">Transcript</option>
-              <option value="frame-visible-link">Visible links</option>
-              <option value="frame-qr-code">QR codes</option>
-              <option value="frame-progress-bar">Progress bars</option>
-            </select>
+            <label className="filter-control review-source-filter">
+              <span>Source</span>
+              <select aria-label="Review queue source filter" value={selectedSource} onChange={(event) => setSelectedSource(event.target.value)}>
+                <option value="all">All sources</option>
+                {sources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
+              </select>
+            </label>
             <strong className="queue-number">{pending.length}</strong>
             <span>items pending</span>
           </Panel>
           <Panel title="Recent Reviews">
             <div className="recent-list">
-              {recent.map((item) => (
+              {recent.length ? recent.map((item) => (
                 <div key={item.id} className="recent-review">
                   <span><LabelBadge label={item.review?.label ?? 'ignored'} /> {timeAgo(item.review?.reviewedAt ?? item.receivedAt)}</span>
                   {item.review?.notes ? <small>{item.review.notes}</small> : null}
                 </div>
-              ))}
+              )) : <EmptyState title="No reviews yet" detail="Completed reviews will appear here while you work through the queue." />}
             </div>
           </Panel>
         </aside>
@@ -662,7 +676,7 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
 function isEditableShortcutTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tagName = target.tagName.toLowerCase();
-  return target.isContentEditable || tagName === 'input' || tagName === 'textarea' || tagName === 'select' || tagName === 'button';
+  return target.isContentEditable || tagName === 'input' || tagName === 'textarea' || tagName === 'select';
 }
 
 function FeedbackTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
@@ -1714,11 +1728,20 @@ function MetricStrip({ metrics }: { metrics: Record<string, number> }): JSX.Elem
   );
 }
 
-function ReviewButton({ label, value, icon: Icon, busy, onSubmit }: { label: string; value: ReviewLabel; icon: typeof CheckCircle2; busy: ReviewLabel | null; onSubmit: (value: ReviewLabel) => Promise<void> }): JSX.Element {
+function ReviewButton({
+  action,
+  busy,
+  onSubmit
+}: {
+  action: ReviewAction;
+  busy: ReviewLabel | null;
+  onSubmit: (value: ReviewLabel) => Promise<void>;
+}): JSX.Element {
+  const Icon = action.icon;
   return (
-    <button type="button" onClick={() => void onSubmit(value)} disabled={busy !== null}>
-      {busy === value ? <Loader2 size={16} className="spin" /> : <Icon size={16} />}
-      {label}
+    <button type="button" aria-keyshortcuts={action.shortcut} onClick={() => void onSubmit(action.value)} disabled={busy !== null}>
+      {busy === action.value ? <Loader2 size={16} className="spin" /> : <Icon size={16} />}
+      {action.label}
     </button>
   );
 }
