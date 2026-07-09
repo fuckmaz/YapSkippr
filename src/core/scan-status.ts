@@ -1,4 +1,5 @@
 import type { EvidenceKind, EvidenceSource, TimedEvidence } from './types';
+import { summarizeRawEvidence } from './evidence-detail';
 
 export const SCAN_STATUS_STORAGE_KEY = 'yapskippr.scanStatus';
 
@@ -496,19 +497,6 @@ function toScanStatusEvidence(evidence: TimedEvidence, timestamp: number, index:
     reason: evidence.reason,
     ...(summarizeRawEvidence(evidence.raw) ? { detail: summarizeRawEvidence(evidence.raw) as string } : {})
   };
-}
-
-function summarizeRawEvidence(raw: unknown): string | null {
-  if (!isRecord(raw)) return null;
-
-  if (Array.isArray(raw.links)) {
-    const links = raw.links.filter((link): link is string => typeof link === 'string' && link.length > 0);
-    if (links.length > 0) return links.join(', ');
-  }
-
-  if (typeof raw.value === 'string' && raw.value.trim()) return raw.value.trim();
-  if (typeof raw.text === 'string' && raw.text.trim()) return raw.text.trim();
-  return null;
 }
 
 function formatEvidenceSource(source: EvidenceSource): string {

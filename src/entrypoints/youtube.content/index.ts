@@ -3,6 +3,7 @@ import { buildSegmentCandidates } from '../../core/analysis/evidence-fusion';
 import { detectProgressBarCue } from '../../core/analysis/progress-bar-detector';
 import { detectQrCue } from '../../core/analysis/qr-detector';
 import { calculateFrameScanProgress, isVideoPlaybackComplete } from '../../core/analysis/scan-progress';
+import { summarizeRawEvidence } from '../../core/evidence-detail';
 import {
   isCapturePermissionMissingError,
   isExtensionContextInvalidatedError,
@@ -667,24 +668,6 @@ function setLocalStorageValue(key: string, value: unknown): Promise<void> {
       resolve();
     });
   });
-}
-
-function summarizeRawEvidence(raw: unknown): string | null {
-  if (!isRecord(raw)) return null;
-
-  if (Array.isArray(raw.links)) {
-    const links = raw.links.filter((link): link is string => typeof link === 'string' && link.length > 0);
-    if (links.length > 0) return links.join(', ');
-  }
-
-  if (typeof raw.value === 'string' && raw.value.trim()) return raw.value.trim();
-  if (typeof raw.text === 'string' && raw.text.trim()) return raw.text.trim();
-  if (typeof raw.contextText === 'string' && raw.contextText.trim()) return raw.contextText.trim();
-  return null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function getFiniteDuration(video: HTMLVideoElement): number | null {
