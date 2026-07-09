@@ -22,7 +22,9 @@ function drawHorizontalLine(imageData: ImageData, y: number, startX: number, end
 
 test('detects a long bright horizontal progress bar away from YouTube controls', () => {
   const imageData = makeImageData(100, 80);
+  drawHorizontalLine(imageData, 29, 10, 89);
   drawHorizontalLine(imageData, 30, 10, 89);
+  drawHorizontalLine(imageData, 31, 10, 89);
 
   const evidence = detectProgressBarCue(imageData, 42);
 
@@ -46,24 +48,37 @@ test('ignores short horizontal lines', () => {
 
 test('ignores likely YouTube control bar near the bottom', () => {
   const imageData = makeImageData(100, 100);
-  drawHorizontalLine(imageData, 97, 5, 95);
+  drawHorizontalLine(imageData, 84, 5, 95);
+  drawHorizontalLine(imageData, 85, 5, 95);
+  drawHorizontalLine(imageData, 86, 5, 95);
 
-  const evidence = detectProgressBarCue(imageData, 42, { ignoreBottomRatio: 0.07 });
+  const evidence = detectProgressBarCue(imageData, 42);
+
+  expect(evidence).toEqual([]);
+});
+
+test('ignores single-pixel horizontal separators', () => {
+  const imageData = makeImageData(100, 80);
+  drawHorizontalLine(imageData, 30, 10, 89);
+
+  const evidence = detectProgressBarCue(imageData, 42);
 
   expect(evidence).toEqual([]);
 });
 
 test('raises confidence when matching horizontal bars persist across neighboring rows', () => {
-  const oneRow = makeImageData(100, 80);
-  drawHorizontalLine(oneRow, 30, 10, 89);
+  const twoRows = makeImageData(100, 80);
+  drawHorizontalLine(twoRows, 30, 10, 89);
+  drawHorizontalLine(twoRows, 31, 10, 89);
 
-  const threeRows = makeImageData(100, 80);
-  drawHorizontalLine(threeRows, 29, 10, 89);
-  drawHorizontalLine(threeRows, 30, 10, 89);
-  drawHorizontalLine(threeRows, 31, 10, 89);
+  const fourRows = makeImageData(100, 80);
+  drawHorizontalLine(fourRows, 29, 10, 89);
+  drawHorizontalLine(fourRows, 30, 10, 89);
+  drawHorizontalLine(fourRows, 31, 10, 89);
+  drawHorizontalLine(fourRows, 32, 10, 89);
 
-  const oneRowEvidence = detectProgressBarCue(oneRow, 42);
-  const threeRowEvidence = detectProgressBarCue(threeRows, 42);
+  const twoRowEvidence = detectProgressBarCue(twoRows, 42);
+  const fourRowEvidence = detectProgressBarCue(fourRows, 42);
 
-  expect(threeRowEvidence[0]?.confidence).toBeGreaterThan(oneRowEvidence[0]?.confidence ?? 0);
+  expect(fourRowEvidence[0]?.confidence).toBeGreaterThan(twoRowEvidence[0]?.confidence ?? 0);
 });

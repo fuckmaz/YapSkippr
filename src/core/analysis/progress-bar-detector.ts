@@ -4,6 +4,7 @@ export interface ProgressBarDetectionOptions {
   ignoreBottomRatio: number;
   minWidthRatio: number;
   minContrast: number;
+  minRows: number;
 }
 
 interface HorizontalRun {
@@ -14,9 +15,10 @@ interface HorizontalRun {
 }
 
 const DEFAULT_OPTIONS: ProgressBarDetectionOptions = {
-  ignoreBottomRatio: 0.07,
-  minWidthRatio: 0.2,
-  minContrast: 80
+  ignoreBottomRatio: 0.18,
+  minWidthRatio: 0.35,
+  minContrast: 80,
+  minRows: 2
 };
 
 export function detectProgressBarCue(
@@ -53,7 +55,9 @@ export function detectProgressBarCue(
 
   if (runs.length === 0) return [];
 
-  const groupedRuns = groupAdjacentRuns(runs);
+  const groupedRuns = groupAdjacentRuns(runs).filter((group) => group.length >= resolved.minRows);
+  if (groupedRuns.length === 0) return [];
+
   const bestGroup = groupedRuns.sort((a, b) => scoreRunGroup(b, width) - scoreRunGroup(a, width))[0];
   if (!bestGroup) return [];
 

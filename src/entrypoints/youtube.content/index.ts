@@ -43,6 +43,7 @@ const logger = createLogger('youtube-content');
 const SEEK_TO_MESSAGE_TYPE = 'YAPSKIPPR_SEEK_TO';
 const FAST_SCAN_MESSAGE_TYPE = 'YAPSKIPPR_SET_FAST_SCAN';
 const NORMAL_SAMPLE_INTERVAL_MS = 5000;
+const FRAME_SAMPLE_WIDTH = 640;
 
 interface SeekToRequest {
   type?: string;
@@ -325,7 +326,7 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
   function restartFrameSampling(): void {
     stopFrames?.();
     stopFrames = startScreenshotFrameSampler(playableVideo, {
-      width: 320,
+      width: FRAME_SAMPLE_WIDTH,
       sampleIntervalMs: fastScanEnabled ? fastScanIntervalSeconds * 1000 : NORMAL_SAMPLE_INTERVAL_MS,
       async onFrame(frame) {
         sampleCount += 1;
@@ -336,9 +337,7 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
         });
 
         const frameEvidence = [...detectProgressBarCue(frame.imageData, frame.currentTimeSeconds)];
-        if (sampleCount % 2 === 0) {
-          frameEvidence.push(...(await detectQrCue(frame.imageData, frame.currentTimeSeconds)));
-        }
+        frameEvidence.push(...(await detectQrCue(frame.imageData, frame.currentTimeSeconds)));
         frameEvidence.push(...(await detectVisibleLinkCue(frame.imageData, frame.currentTimeSeconds)));
         const durationSeconds = getFiniteDuration(playableVideo);
 

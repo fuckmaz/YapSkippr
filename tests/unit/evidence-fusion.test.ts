@@ -44,12 +44,33 @@ test('increases confidence when QR evidence appears near transcript start', () =
   expect(withQr[0]?.confidence).toBeGreaterThan(withoutQr[0]?.confidence ?? 0);
 });
 
-test('creates a low-confidence open candidate from frame-only progress evidence', () => {
+test('filters isolated frame-only progress evidence below display threshold', () => {
   const candidates = buildSegmentCandidates([
     evidence({
       source: 'frame-progress-bar',
       kind: 'ad-read-presence',
       startSeconds: 40,
+      confidence: 0.65,
+      reason: 'bar'
+    })
+  ]);
+
+  expect(candidates).toEqual([]);
+});
+
+test('creates a low-confidence open candidate from repeated frame-only progress evidence', () => {
+  const candidates = buildSegmentCandidates([
+    evidence({
+      source: 'frame-progress-bar',
+      kind: 'ad-read-presence',
+      startSeconds: 40,
+      confidence: 0.65,
+      reason: 'bar'
+    }),
+    evidence({
+      source: 'frame-progress-bar',
+      kind: 'ad-read-presence',
+      startSeconds: 43,
       confidence: 0.65,
       reason: 'bar'
     })
@@ -137,7 +158,7 @@ test('clusters repeated nearby frame-only evidence into one candidate', () => {
   expect(candidates[0]?.confidence).toBeGreaterThan(0.65);
 });
 
-test('keeps distant frame-only evidence as separate candidates', () => {
+test('filters distant isolated frame-only progress evidence', () => {
   const candidates = buildSegmentCandidates([
     evidence({
       source: 'frame-progress-bar',
@@ -155,8 +176,7 @@ test('keeps distant frame-only evidence as separate candidates', () => {
     })
   ]);
 
-  expect(candidates).toHaveLength(2);
-  expect(candidates.map((candidate) => candidate.startSeconds)).toEqual([40, 95]);
+  expect(candidates).toEqual([]);
 });
 
 test('keeps separate transcript-led candidates when multiple start cues exist', () => {
