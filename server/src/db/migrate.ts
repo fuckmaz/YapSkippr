@@ -17,6 +17,7 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
         video_id text,
         occurrence_id text not null,
         label integer not null check (label in (0, 1)),
+        feature_schema_version integer,
         features jsonb not null,
         created_at timestamptz not null
       );
@@ -54,6 +55,7 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
       create index if not exists training_examples_feedback_id_idx on training_examples (feedback_id);
       create index if not exists promotion_history_promoted_at_idx on promotion_history (promoted_at desc);
     `);
+    await pool.query('alter table training_examples add column if not exists feature_schema_version integer');
     await pool.query(`
       delete from training_examples stale
       using training_examples latest

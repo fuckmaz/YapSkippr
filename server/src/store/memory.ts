@@ -63,6 +63,7 @@ export function createMemoryRepository(now: () => string = () => new Date().toIS
           videoId: record.payload.videoId,
           occurrenceId: record.payload.occurrenceId,
           label: trainingLabel,
+          featureSchemaVersion: record.payload.featureSchemaVersion ?? null,
           features: record.payload.candidateFeatures
         });
       }

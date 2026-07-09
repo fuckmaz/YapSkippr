@@ -309,7 +309,95 @@ describe('YapSkippr server API', () => {
     expect(train.statusCode).toBe(400);
     expect(train.json()).toMatchObject({
       ok: false,
-      error: 'Training requires at least one positive and one negative reviewed example.'
+      error: 'Training requires at least one positive and one negative reviewed example for feature schema 2.'
+    });
+
+    await app.close();
+  });
+
+  test('trains only reviewed examples that match the current feature schema', async () => {
+    const app = await buildServer({ adminToken: 'secret' });
+
+    const oldSchemaPositive = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'candidate-old-schema-positive',
+        videoId: 'video-old',
+        featureSchemaVersion: 1
+      })
+    });
+    const currentSchemaNegative = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'candidate-current-schema-negative',
+        videoId: 'video-current-negative',
+        feedback: 'false_positive',
+        candidateFeatures: {
+          ...feedbackFixture().candidateFeatures,
+          transcriptStartCount: 0,
+          visibleLinkCount: 1,
+          sponsorPhraseHitCount: 0
+        }
+      })
+    });
+
+    for (const [response, label] of [
+      [oldSchemaPositive, 'positive'],
+      [currentSchemaNegative, 'false_positive']
+    ] as const) {
+      expect(response.statusCode).toBe(201);
+      const review = await app.inject({
+        method: 'POST',
+        url: `/admin/feedback/${response.json().feedbackId}/review`,
+        headers: { 'x-admin-token': 'secret' },
+        payload: { label }
+      });
+      expect(review.statusCode).toBe(200);
+    }
+
+    const mixedSchemaTrain = await app.inject({
+      method: 'POST',
+      url: '/admin/models/train',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    expect(mixedSchemaTrain.statusCode).toBe(400);
+    expect(mixedSchemaTrain.json()).toMatchObject({
+      ok: false,
+      error: 'Training requires at least one positive and one negative reviewed example for feature schema 2.'
+    });
+
+    const currentSchemaPositive = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'candidate-current-schema-positive',
+        videoId: 'video-current-positive'
+      })
+    });
+    expect(currentSchemaPositive.statusCode).toBe(201);
+    const currentSchemaPositiveReview = await app.inject({
+      method: 'POST',
+      url: `/admin/feedback/${currentSchemaPositive.json().feedbackId}/review`,
+      headers: { 'x-admin-token': 'secret' },
+      payload: { label: 'positive' }
+    });
+    expect(currentSchemaPositiveReview.statusCode).toBe(200);
+
+    const train = await app.inject({
+      method: 'POST',
+      url: '/admin/models/train',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    expect(train.statusCode).toBe(201);
+    expect(train.json().model).toMatchObject({
+      featureSchemaVersion: 2,
+      trainingSetSummary: {
+        examples: 2,
+        positives: 1,
+        negatives: 1
+      }
     });
 
     await app.close();

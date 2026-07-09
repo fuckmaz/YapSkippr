@@ -65,13 +65,16 @@ export function createPostgresRepository(databaseUrl: string): YapSkipprReposito
     },
 
     async listTrainingExamples() {
-      const result = await pool.query('select id, feedback_id, video_id, occurrence_id, label, features from training_examples order by created_at asc');
+      const result = await pool.query(
+        'select id, feedback_id, video_id, occurrence_id, label, feature_schema_version, features from training_examples order by created_at asc'
+      );
       return result.rows.map((row): LabeledTrainingExample => ({
         id: row.id,
         feedbackId: row.feedback_id,
         videoId: row.video_id,
         occurrenceId: row.occurrence_id,
         label: row.label,
+        featureSchemaVersion: row.feature_schema_version,
         features: row.features
       }));
     },
@@ -220,14 +223,15 @@ async function insertTrainingExampleIfUseful(
   const trainingLabel = toTrainingLabel(label);
   if (trainingLabel === null || !payload.candidateFeatures) return;
   await client.query(
-    `insert into training_examples (id, feedback_id, video_id, occurrence_id, label, features, created_at)
-     values ($1, $2, $3, $4, $5, $6, $7)`,
+    `insert into training_examples (id, feedback_id, video_id, occurrence_id, label, feature_schema_version, features, created_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       `example_${randomUUID()}`,
       feedbackId,
       payload.videoId,
       payload.occurrenceId,
       trainingLabel,
+      payload.featureSchemaVersion ?? null,
       payload.candidateFeatures,
       new Date().toISOString()
     ]

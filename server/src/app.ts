@@ -6,7 +6,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { feedbackPayloadV2Schema } from './feedback/schema.js';
-import { trainLogisticModel } from './model/trainer.js';
+import { TRAINING_FEATURE_SCHEMA_VERSION, trainLogisticModel } from './model/trainer.js';
 import { createMemoryRepository } from './store/memory.js';
 import { createPostgresRepository } from './store/postgres.js';
 import type { ReviewLabel, YapSkipprRepository } from './store/types.js';
@@ -99,13 +99,22 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
   app.post('/admin/models/train', { preHandler: requireAdmin(adminToken) }, async (_request, reply) => {
     const examples = await repository.listTrainingExamples();
-    if (examples.length === 0) return reply.status(400).send({ ok: false, error: 'No reviewed training examples are available.' });
-    const positives = examples.filter((example) => example.label === 1).length;
-    const negatives = examples.length - positives;
-    if (positives === 0 || negatives === 0) {
-      return reply.status(400).send({ ok: false, error: 'Training requires at least one positive and one negative reviewed example.' });
+    const compatibleExamples = examples.filter((example) => example.featureSchemaVersion === TRAINING_FEATURE_SCHEMA_VERSION);
+    if (compatibleExamples.length === 0) {
+      return reply.status(400).send({
+        ok: false,
+        error: `No reviewed training examples are available for feature schema ${TRAINING_FEATURE_SCHEMA_VERSION}.`
+      });
     }
-    const model = trainLogisticModel(examples);
+    const positives = compatibleExamples.filter((example) => example.label === 1).length;
+    const negatives = compatibleExamples.length - positives;
+    if (positives === 0 || negatives === 0) {
+      return reply.status(400).send({
+        ok: false,
+        error: `Training requires at least one positive and one negative reviewed example for feature schema ${TRAINING_FEATURE_SCHEMA_VERSION}.`
+      });
+    }
+    const model = trainLogisticModel(compatibleExamples);
     await repository.saveModel(model);
     const run = await repository.createTrainingRun(model);
     return reply.status(201).send({ ok: true, model, run });

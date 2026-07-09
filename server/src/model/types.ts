@@ -17,5 +17,6 @@ export interface LabeledTrainingExample {
   videoId: string | null;
   occurrenceId: string;
   label: 0 | 1;
+  featureSchemaVersion?: number | null;
   features: Record<string, number>;
 }

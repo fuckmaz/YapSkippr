@@ -6,7 +6,7 @@ export interface TrainLogisticModelOptions {
   learningRate?: number;
 }
 
-const featureSchemaVersion = 2;
+export const TRAINING_FEATURE_SCHEMA_VERSION = 2;
 const excludedTrainableFeatures = new Set(['startSeconds', 'durationSeconds', 'evidenceTimeSpanSeconds']);
 
 export function trainLogisticModel(
@@ -54,7 +54,7 @@ export function trainLogisticModel(
   return {
     modelId,
     modelVersion: formatModelVersion(now),
-    featureSchemaVersion,
+    featureSchemaVersion: TRAINING_FEATURE_SCHEMA_VERSION,
     createdAt: now,
     promotedAt: null,
     intercept: round(intercept),
