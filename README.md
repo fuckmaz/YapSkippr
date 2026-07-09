@@ -131,6 +131,8 @@ npm run test:dashboard
 npm run typecheck:server
 ```
 
+`npm run test:e2e` rebuilds both Chrome and Firefox extension outputs before checking their generated manifests and bundled entrypoints.
+
 ### Transcript Phrase Tuning
 
 Transcript ad-read cues are configured by default in `DEFAULT_TRANSCRIPT_PHRASE_GROUPS` inside `src/core/analysis/transcript-analyzer.ts`. For local testing, open the extension popup, switch to Detailed mode, edit the Transcript phrase groups JSON, save it, and reload the YouTube tab. Each group defines:

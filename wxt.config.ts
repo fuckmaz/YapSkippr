@@ -2,7 +2,7 @@ import { defineConfig } from 'wxt';
 
 export default defineConfig({
   srcDir: 'src',
-  manifest: {
+  manifest: ({ browser }) => ({
     name: 'YapSkippr',
     description: 'In-Video Sponsorship- and Ad-Skipper',
     permissions: ['storage', 'activeTab'],
@@ -15,6 +15,18 @@ export default defineConfig({
     ],
     action: {
       default_title: 'YapSkippr'
-    }
-  }
+    },
+    ...(browser === 'firefox'
+      ? {
+          browser_specific_settings: {
+            gecko: {
+              id: 'yapskippr@maz.dev',
+              data_collection_permissions: {
+                required: ['none']
+              }
+            }
+          }
+        }
+      : {})
+  })
 });

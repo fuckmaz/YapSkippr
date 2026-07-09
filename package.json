@@ -22,6 +22,7 @@
     "server:dev": "npm --prefix server run dev",
     "server:migrate": "npm --prefix server run migrate",
     "coverage": "vitest run --coverage",
+    "pretest:e2e": "npm run build && npm run build:firefox",
     "test:e2e": "playwright test",
     "postinstall": "wxt prepare"
   },
