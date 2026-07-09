@@ -160,7 +160,8 @@ npm run server:dev
 Docker with Postgres:
 
 ```bash
-ADMIN_TOKEN=change-me docker compose up --build
+export ADMIN_TOKEN="$(openssl rand -hex 32)"
+docker compose up --build
 ```
 
 Then open `http://localhost:8787/admin`, enter the admin token, review submitted feedback, train a model, and promote it. The server sets an HTTP-only admin session cookie; admin APIs also accept `x-admin-token` for scripted workflows. Configure the extension popup feedback endpoint as:

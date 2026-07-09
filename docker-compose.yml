@@ -19,7 +19,7 @@ services:
     environment:
       PORT: 8787
       HOST: 0.0.0.0
-      ADMIN_TOKEN: ${ADMIN_TOKEN:-change-me-long-random-token}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?Set ADMIN_TOKEN to a long random value before starting YapSkippr}
       ALLOWED_EXTENSION_ORIGINS: "${ALLOWED_EXTENSION_ORIGINS:-chrome-extension://*,moz-extension://*,http://localhost:*,http://127.0.0.1:*}"
       DATABASE_URL: postgres://yapskippr:yapskippr@postgres:5432/yapskippr
     ports:

@@ -23,8 +23,8 @@ const reviewSchema = z.object({
 });
 
 export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
+  const adminToken = resolveAdminToken(options.adminToken);
   const repository = options.repository ?? (process.env.DATABASE_URL ? createPostgresRepository(process.env.DATABASE_URL) : createMemoryRepository());
-  const adminToken = options.adminToken ?? process.env.ADMIN_TOKEN ?? 'dev-admin-token';
   const allowedOrigins = options.allowedExtensionOrigins ?? parseAllowedOrigins(process.env.ALLOWED_EXTENSION_ORIGINS);
   const app = Fastify({ logger: false });
 
@@ -245,6 +245,22 @@ function renderAdminLoginPage(): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+export function resolveAdminToken(configuredToken: string | undefined, env: NodeJS.ProcessEnv = process.env): string {
+  const token = (configuredToken ?? env.ADMIN_TOKEN)?.trim();
+  const production = env.NODE_ENV === 'production';
+
+  if (!token) {
+    if (production) throw new Error('ADMIN_TOKEN must be configured in production.');
+    return 'dev-admin-token';
+  }
+
+  if (production && token.length < 24) {
+    throw new Error('ADMIN_TOKEN must be at least 24 characters in production.');
+  }
+
+  return token;
 }
 
 function parseAllowedOrigins(value: string | undefined): readonly string[] {

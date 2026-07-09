@@ -1,10 +1,16 @@
 import { describe, expect, test } from 'vitest';
-import { buildServer } from '../src/app';
+import { buildServer, resolveAdminToken } from '../src/app';
 import type { CandidateModelArtifact } from '../src/model/types';
 import { createMemoryRepository } from '../src/store/memory';
 import { feedbackFixture } from './fixtures';
 
 describe('YapSkippr server API', () => {
+  test('refuses to start in production without an explicit admin token', async () => {
+    expect(() => resolveAdminToken(undefined, { NODE_ENV: 'production' })).toThrow('ADMIN_TOKEN must be configured in production.');
+    expect(() => resolveAdminToken(undefined, { NODE_ENV: 'production', ADMIN_TOKEN: 'short' })).toThrow('ADMIN_TOKEN must be at least 24 characters in production.');
+    expect(resolveAdminToken(undefined, { NODE_ENV: 'development' })).toBe('dev-admin-token');
+  });
+
   test('only emits CORS allow-origin for configured extension origins', async () => {
     const app = await buildServer({
       adminToken: 'secret',
