@@ -94,6 +94,18 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await page.getByLabel('Training dataset status filter').selectOption('blocked');
     await expectVisible(page, page.getByText('Feedback has not been reviewed yet.').first());
     await page.getByLabel('Training dataset status filter').selectOption('all');
+    await page.getByLabel('Search training dataset').fill('candidate-link');
+    await expectVisible(page, page.getByText('candidate-link').first());
+    expect(await page.getByText('candidate-positive').count()).toBe(0);
+    await page.getByLabel('Search training dataset').fill('');
+    await page.getByLabel('Training dataset sort').selectOption('time-asc');
+    await expectVisible(page, page.getByRole('columnheader', { name: 'Actions' }));
+    await page.getByRole('button', { name: 'Inspect dataset row candidate-link' }).click();
+    await expectVisible(page, page.getByRole('heading', { name: 'Training Dataset Details' }));
+    await expectVisible(page, page.getByText('visibleLinkCount'));
+    await expectVisible(page, page.locator('.training-dataset-detail-grid').getByText('Model confidence'));
+    await expectVisible(page, page.getByText('Evidence snapshot'));
+    await expectVisible(page, page.getByText('This video is sponsored by Acme. Use code YAP.'));
     await expectVisible(page, page.locator('.training-readiness').getByText('Schema 2', { exact: true }));
     await expectVisible(page, page.getByText('1 compatible'));
     await expectVisible(page, page.getByText('1 positive · 0 negative'));

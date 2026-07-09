@@ -881,6 +881,11 @@ nav em {
   gap: 12px;
 }
 
+.training-dataset-detail-grid .summary-list strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .model-detail-grid section {
   display: grid;
   gap: 9px;

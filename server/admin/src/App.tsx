@@ -355,7 +355,7 @@ export function App(): JSX.Element {
             {page === 'feedback' ? <FeedbackTable items={data.feedback} /> : null}
             {page === 'videos' ? <VideosTable items={data.feedback} /> : null}
             {page === 'models' ? <ModelsPage token={token} models={data.models} promoted={data.promoted} history={data.promotionHistory} onRefresh={refresh} /> : null}
-            {page === 'training' ? <TrainingPage token={token} summary={data.summary} runs={data.trainingRuns} trainingDataset={data.trainingDataset} promoted={data.promoted} onRefresh={refresh} /> : null}
+            {page === 'training' ? <TrainingPage token={token} summary={data.summary} feedback={data.feedback} runs={data.trainingRuns} trainingDataset={data.trainingDataset} promoted={data.promoted} onRefresh={refresh} /> : null}
           </>
         ) : null}
       </main>
@@ -1094,6 +1094,7 @@ function ModelEvaluationPanel({ model, evaluation }: { model: ModelArtifact; eva
 function TrainingPage({
   token,
   summary,
+  feedback,
   runs,
   trainingDataset,
   promoted,
@@ -1101,6 +1102,7 @@ function TrainingPage({
 }: {
   token: string;
   summary: Summary | null;
+  feedback: FeedbackRecord[];
   runs: TrainingRun[];
   trainingDataset: TrainingDatasetRow[];
   promoted: ModelArtifact | null;
@@ -1108,14 +1110,19 @@ function TrainingPage({
 }): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [datasetQuery, setDatasetQuery] = useState('');
   const [datasetSourceFilter, setDatasetSourceFilter] = useState('all');
   const [datasetStatusFilter, setDatasetStatusFilter] = useState('all');
+  const [datasetSort, setDatasetSort] = useState('received-desc');
+  const [selectedDatasetFeedbackId, setSelectedDatasetFeedbackId] = useState<string | null>(null);
+  const feedbackById = useMemo(() => new Map(feedback.map((item) => [item.id, item])), [feedback]);
   const datasetSources = useMemo(() => {
     return [...new Set(trainingDataset.map((row) => row.source))]
       .sort((a, b) => sourceLabel(a).localeCompare(sourceLabel(b)));
   }, [trainingDataset]);
   const visibleTrainingDataset = useMemo(() => {
     return trainingDataset
+      .filter((row) => matchesQuery({ row, payload: feedbackById.get(row.feedbackId)?.payload }, datasetQuery))
       .filter((row) => datasetSourceFilter === 'all' || row.source === datasetSourceFilter)
       .filter((row) => {
         if (datasetStatusFilter === 'all') return true;
@@ -1123,8 +1130,17 @@ function TrainingPage({
         if (datasetStatusFilter === 'blocked') return !row.trainable;
         if (datasetStatusFilter === 'incompatible') return !row.compatible;
         return true;
-      });
-  }, [datasetSourceFilter, datasetStatusFilter, trainingDataset]);
+      })
+      .sort((a, b) => compareTrainingDatasetRows(a, b, datasetSort, feedbackById));
+  }, [datasetQuery, datasetSort, datasetSourceFilter, datasetStatusFilter, feedbackById, trainingDataset]);
+  const selectedDatasetRow = selectedDatasetFeedbackId
+    ? trainingDataset.find((row) => row.feedbackId === selectedDatasetFeedbackId) ?? null
+    : null;
+  const selectedDatasetFeedback = selectedDatasetFeedbackId ? feedbackById.get(selectedDatasetFeedbackId) ?? null : null;
+
+  useEffect(() => {
+    setSelectedDatasetFeedbackId(null);
+  }, [datasetQuery, datasetSourceFilter, datasetStatusFilter]);
 
   async function train(): Promise<void> {
     setBusy(true);
@@ -1148,6 +1164,15 @@ function TrainingPage({
       <TrainingReadinessPanel readiness={summary?.trainingReadiness ?? null} />
       <Panel title="Training Dataset Explorer">
         <div className="table-toolbar">
+          <label className="inline-search">
+            <Search size={16} />
+            <input
+              aria-label="Search training dataset"
+              value={datasetQuery}
+              onChange={(event) => setDatasetQuery(event.target.value)}
+              placeholder="Search dataset..."
+            />
+          </label>
           <label className="filter-control">
             <span>Source</span>
             <select
@@ -1172,8 +1197,22 @@ function TrainingPage({
               <option value="incompatible">Incompatible schema</option>
             </select>
           </label>
+          <label className="filter-control">
+            <span>Sort</span>
+            <select
+              aria-label="Training dataset sort"
+              value={datasetSort}
+              onChange={(event) => setDatasetSort(event.target.value)}
+            >
+              <option value="received-desc">Newest first</option>
+              <option value="received-asc">Oldest first</option>
+              <option value="time-asc">Earliest timecode</option>
+              <option value="confidence-desc">Model confidence</option>
+              <option value="trainable-first">Trainable first</option>
+            </select>
+          </label>
         </div>
-        <DataTable columns={['Candidate', 'Video', 'Source', 'Timecode', 'Review', 'Schema', 'Features', 'Trainable', 'Reason']} rows={visibleTrainingDataset.map((row) => [
+        <DataTable columns={['Candidate', 'Video', 'Source', 'Timecode', 'Review', 'Schema', 'Features', 'Trainable', 'Reason', 'Actions']} rows={visibleTrainingDataset.map((row) => [
           row.occurrenceId,
           row.videoId ?? 'unknown',
           sourceLabel(row.source),
@@ -1182,9 +1221,15 @@ function TrainingPage({
           row.featureSchemaVersion === null ? '-' : `Schema ${row.featureSchemaVersion}`,
           row.featureCount,
           row.trainable ? <span className="status positive">Trainable</span> : <span className="status pending">Blocked</span>,
-          row.exclusionReason ?? 'Ready for confidence training'
+          row.exclusionReason ?? 'Ready for confidence training',
+          <div className="table-actions">
+            <button type="button" aria-label={`Inspect dataset row ${row.occurrenceId}`} onClick={() => setSelectedDatasetFeedbackId(row.feedbackId)}>
+              <Eye size={14} /> Inspect
+            </button>
+          </div>
         ])} />
       </Panel>
+      {selectedDatasetRow ? <TrainingDatasetDetailPanel row={selectedDatasetRow} feedback={selectedDatasetFeedback} /> : null}
       <Panel title="Current Promoted Model">
         {promoted ? (
           <div className="promoted-model-summary">
@@ -1214,6 +1259,87 @@ function TrainingPage({
         <span className="status positive">{run.status}</span>
       ])} />
     </section>
+  );
+}
+
+function TrainingDatasetDetailPanel({ row, feedback }: { row: TrainingDatasetRow; feedback: FeedbackRecord | null }): JSX.Element {
+  const payload = feedback?.payload ?? null;
+  const features = Object.entries(payload?.candidateFeatures ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  const evidence = payload?.evidenceSnapshot ?? [];
+
+  return (
+    <Panel title="Training Dataset Details">
+      <div className="feedback-detail-grid training-dataset-detail-grid">
+        <section className="detail-section">
+          <h3>Candidate</h3>
+          <div className="summary-list">
+            <DetailRow label="Occurrence" value={row.occurrenceId} />
+            <DetailRow label="Video" value={row.videoId ?? 'unknown'} />
+            <DetailRow label="Source" value={sourceLabel(row.source)} />
+            <DetailRow label="Timecode" value={formatTime(row.startSeconds)} />
+            <DetailRow label="Received" value={timeAgo(row.receivedAt)} />
+          </div>
+        </section>
+        <section className="detail-section">
+          <h3>Training status</h3>
+          <div className="summary-list">
+            <DetailRow label="Review label" value={row.reviewLabel ?? 'pending'} />
+            <DetailRow label="Training label" value={row.trainingLabel === null ? '-' : row.trainingLabel} />
+            <DetailRow label="Feature schema" value={row.featureSchemaVersion === null ? '-' : row.featureSchemaVersion} />
+            <DetailRow label="Feature count" value={row.featureCount} />
+            <DetailRow label="Trainable" value={row.trainable ? 'Yes' : 'No'} />
+            <DetailRow label="Reason" value={row.exclusionReason ?? 'Ready for confidence training'} />
+          </div>
+        </section>
+        <section className="detail-section">
+          <h3>Model metadata</h3>
+          <div className="summary-list">
+            <DetailRow label="Heuristic confidence" value={formatPercent(payload?.heuristicConfidence)} />
+            <DetailRow label="Model confidence" value={formatPercent(payload?.modelConfidence)} />
+            <DetailRow label="Model" value={payload?.modelId ?? 'fallback'} />
+            <DetailRow label="Version" value={payload?.modelVersion ?? 'fallback'} />
+            <DetailRow label="Model source" value={payload?.modelSource ?? 'fallback'} />
+          </div>
+        </section>
+        <section className="detail-section detail-section-wide">
+          <h3>Evidence snapshot</h3>
+          {evidence.length ? (
+            <div className="detail-evidence-list">
+              {evidence.map((entry, index) => (
+                <div key={`${entry.source}-${entry.startSeconds}-${index}`} className="detail-evidence-row">
+                  <span>{sourceLabel(entry.source)}</span>
+                  <strong>{entry.kind}</strong>
+                  <em>{formatTime(entry.startSeconds)} · {formatPercent(entry.confidence)}</em>
+                  <p>{entry.detail ?? entry.reason}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="No evidence snapshot" detail="This row has no stored detector evidence." />
+          )}
+        </section>
+        <section className="detail-section">
+          <h3>Candidate features</h3>
+          {features.length ? (
+            <div className="feature-list">
+              {features.map(([feature, value]) => <DetailRow key={feature} label={feature} value={formatFeatureValue(value)} />)}
+            </div>
+          ) : (
+            <EmptyState title="No candidate features" detail="This row cannot be used for confidence training." />
+          )}
+        </section>
+        <section className="detail-section">
+          <h3>Transcript context</h3>
+          <p>{payload?.transcriptContext || 'No transcript context submitted.'}</p>
+          <h3>Extension feedback</h3>
+          <div className="summary-list">
+            <DetailRow label="Submitted as" value={payload?.feedback ?? 'unknown'} />
+            <DetailRow label="Viewer notes" value={payload?.notes ?? 'No viewer note submitted.'} />
+            <DetailRow label="Admin notes" value={feedback?.review?.notes ?? 'No admin note submitted.'} />
+          </div>
+        </section>
+      </div>
+    </Panel>
   );
 }
 
@@ -1399,6 +1525,22 @@ function compareModels(a: ModelArtifact, b: ModelArtifact, sort: string, promote
   if (sort === 'examples-desc') return numberValue(b.trainingSetSummary.examples) - numberValue(a.trainingSetSummary.examples) || compareModels(a, b, 'created-desc', promotedId);
   if (sort === 'version-asc') return a.modelVersion.localeCompare(b.modelVersion);
   return dateValue(b.createdAt) - dateValue(a.createdAt);
+}
+
+function compareTrainingDatasetRows(
+  a: TrainingDatasetRow,
+  b: TrainingDatasetRow,
+  sort: string,
+  feedbackById: ReadonlyMap<string, FeedbackRecord>
+): number {
+  if (sort === 'received-asc') return dateValue(a.receivedAt) - dateValue(b.receivedAt);
+  if (sort === 'time-asc') return a.startSeconds - b.startSeconds || compareTrainingDatasetRows(a, b, 'received-desc', feedbackById);
+  if (sort === 'confidence-desc') {
+    return numberValue(feedbackById.get(b.feedbackId)?.payload.modelConfidence) - numberValue(feedbackById.get(a.feedbackId)?.payload.modelConfidence)
+      || compareTrainingDatasetRows(a, b, 'received-desc', feedbackById);
+  }
+  if (sort === 'trainable-first') return Number(b.trainable) - Number(a.trainable) || compareTrainingDatasetRows(a, b, 'received-desc', feedbackById);
+  return dateValue(b.receivedAt) - dateValue(a.receivedAt);
 }
 
 function PageTitle({ title, description }: { title: string; description: string }): JSX.Element {
