@@ -810,11 +810,15 @@ function TrainingPage({
   onRefresh: () => Promise<void>;
 }): JSX.Element {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   async function train(): Promise<void> {
     setBusy(true);
+    setError(null);
     try {
       await api('/admin/models/train', token, { method: 'POST' });
       await onRefresh();
+    } catch (trainError) {
+      setError(trainError instanceof Error ? trainError.message : String(trainError));
     } finally {
       setBusy(false);
     }
@@ -825,6 +829,7 @@ function TrainingPage({
       <button type="button" className="primary train-button" onClick={() => void train()} disabled={busy}>
         {busy ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />} Train model
       </button>
+      {error ? <div className="inline-alert"><XCircle size={16} /> {error}</div> : null}
       <Panel title="Current Promoted Model">
         {promoted ? (
           <div className="promoted-model-summary">
@@ -1105,8 +1110,18 @@ async function api<T>(path: string, token: string, init: RequestInit = {}): Prom
     credentials: 'same-origin',
     headers
   });
-  if (!response.ok) throw new Error(`HTTP ${response.status} from ${path}`);
+  if (!response.ok) throw new Error(await responseErrorMessage(response, path));
   return response.json() as Promise<T>;
+}
+
+async function responseErrorMessage(response: Response, path: string): Promise<string> {
+  try {
+    const payload = await response.clone().json() as { error?: unknown };
+    if (typeof payload.error === 'string' && payload.error.trim()) return payload.error;
+  } catch {
+    // Fall through to the generic message for non-JSON errors.
+  }
+  return `HTTP ${response.status} from ${path}`;
 }
 
 function uniqueVideoCount(items: readonly FeedbackRecord[]): number {

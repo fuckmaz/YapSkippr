@@ -70,6 +70,12 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.locator('.recent-list').getByText('Positive'));
     await expectVisible(page, page.locator('.recent-list').getByText('Confirmed visible link cue during review.'));
 
+    await page.getByRole('button', { name: 'Training' }).click();
+    const rejectedTrainResponse = page.waitForResponse((response) => response.url().endsWith('/admin/models/train'));
+    await page.getByRole('button', { name: 'Train model' }).click();
+    expect((await rejectedTrainResponse).status()).toBe(400);
+    await expectVisible(page, page.getByText('Training requires at least one positive and one negative reviewed example.'));
+
     await page.getByRole('button', { name: 'Feedback' }).click();
     await page.getByLabel('Search feedback').fill('candidate-link');
     await expectVisible(page, page.getByRole('cell', { name: 'video-b' }));
