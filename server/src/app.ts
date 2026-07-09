@@ -71,7 +71,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       return reply.status(401).send({ ok: false, error: 'Invalid admin token.' });
     }
 
-    reply.header('set-cookie', buildAdminCookie(adminToken));
+    reply.header('set-cookie', buildAdminCookie(adminToken, process.env.NODE_ENV === 'production'));
     return { ok: true };
   });
   app.get('/admin/api/session', { preHandler: requireAdmin(adminToken) }, async () => ({ ok: true }));
@@ -165,12 +165,13 @@ function extractAdminSessionToken(body: unknown): string | null {
   return typeof body.token === 'string' ? body.token : null;
 }
 
-function buildAdminCookie(adminToken: string): string {
+function buildAdminCookie(adminToken: string, secure: boolean): string {
   return [
     `yapskippr_admin=${adminSessionSignature(adminToken)}`,
     'Path=/admin',
     'HttpOnly',
     'SameSite=Lax',
+    ...(secure ? ['Secure'] : []),
     'Max-Age=604800'
   ].join('; ');
 }

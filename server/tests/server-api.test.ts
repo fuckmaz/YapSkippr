@@ -127,6 +127,30 @@ describe('YapSkippr server API', () => {
     await app.close();
   });
 
+  test('marks admin session cookies secure in production', async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    const app = await buildServer({
+      adminToken: 'super-secret-admin-token-32-chars',
+      repository: createMemoryRepository()
+    });
+
+    try {
+      const acceptedSession = await app.inject({
+        method: 'POST',
+        url: '/admin/session',
+        payload: { token: 'super-secret-admin-token-32-chars' }
+      });
+
+      expect(acceptedSession.statusCode).toBe(200);
+      expect(acceptedSession.headers['set-cookie']).toEqual(expect.stringContaining('Secure'));
+    } finally {
+      await app.close();
+      if (originalNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = originalNodeEnv;
+    }
+  });
+
   test('review, training, promotion, latest model, and rollback work end to end', async () => {
     const app = await buildServer({ adminToken: 'secret' });
 
