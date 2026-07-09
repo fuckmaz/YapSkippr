@@ -101,7 +101,7 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     expect(await page.getByRole('cell', { name: 'video-a' }).count()).toBe(0);
     await page.getByLabel('Feedback source filter').selectOption('all');
     await page.getByLabel('Feedback review filter').selectOption('reviewed');
-    await expectVisible(page, page.getByText('positive'));
+    await expectVisible(page, page.getByText('positive', { exact: true }));
     expect(await page.locator('.table-wrap tbody').getByText('Pending').count()).toBe(0);
     await page.getByLabel('Feedback review filter').selectOption('all');
     await page.getByLabel('Feedback sort').selectOption('model-desc');
@@ -146,6 +146,10 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.getByRole('heading', { name: 'Model Evaluation' }));
     await expectVisible(page, page.getByText('Feature weights'));
     await expectVisible(page, page.getByText('Training summary'));
+    await expectVisible(page, page.getByText('Artifact metadata'));
+    await expectVisible(page, page.getByText('Feature schema'));
+    await expectVisible(page, page.getByText('Thresholds'));
+    await expectVisible(page, page.locator('.model-detail-grid').getByText('positive', { exact: true }));
 
     const promoteResponse = page.waitForResponse((response) => response.url().includes('/admin/models/') && response.url().endsWith('/promote'));
     await page.getByRole('button', { name: 'Promote' }).click();

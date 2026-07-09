@@ -906,6 +906,7 @@ function ModelEvaluationPanel({ model, evaluation }: { model: ModelArtifact; eva
     .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
     .slice(0, 10);
   const summary = Object.entries(evaluation.trainingSetSummary);
+  const thresholds = Object.entries(model.thresholds).sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <Panel title="Model Evaluation">
@@ -926,6 +927,22 @@ function ModelEvaluationPanel({ model, evaluation }: { model: ModelArtifact; eva
                 <strong data-direction={weight >= 0 ? 'positive' : 'negative'}>{formatSignedMetric(weight)}</strong>
               </div>
             ))}
+          </div>
+        </section>
+        <section>
+          <h3>Artifact metadata</h3>
+          <div className="summary-list">
+            <DetailRow label="Model version" value={model.modelVersion} />
+            <DetailRow label="Feature schema" value={model.featureSchemaVersion} />
+            <DetailRow label="Created" value={formatAbsoluteDate(model.createdAt)} />
+            <DetailRow label="Promoted" value={model.promotedAt ? formatAbsoluteDate(model.promotedAt) : 'Draft'} />
+            <DetailRow label="Intercept" value={formatSignedMetric(model.intercept)} />
+          </div>
+        </section>
+        <section>
+          <h3>Thresholds</h3>
+          <div className="summary-list">
+            {thresholds.map(([label, value]) => <DetailRow key={label} label={label} value={formatMetric(value)} />)}
           </div>
         </section>
         <section>
@@ -1408,6 +1425,10 @@ function numberValue(value: number | undefined): number {
 function dateValue(iso: string): number {
   const value = new Date(iso).getTime();
   return Number.isFinite(value) ? value : 0;
+}
+
+function formatAbsoluteDate(iso: string): string {
+  return dateValue(iso) === 0 ? '-' : iso.slice(0, 19).replace('T', ' ');
 }
 
 function timeAgo(iso: string): string {
