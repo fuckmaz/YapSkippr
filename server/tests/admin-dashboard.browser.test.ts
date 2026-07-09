@@ -52,7 +52,7 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.getByText('Feedback · video-b').first());
     await page.getByRole('button', { name: 'Open feedback candidate-link' }).click();
     await expectVisible(page, page.getByRole('heading', { name: 'Feedback' }));
-    await expectVisible(page, page.getByRole('cell', { name: 'candidate-link' }));
+    await expectVisible(page, page.getByRole('cell', { name: 'candidate-link', exact: true }));
     await page.getByRole('button', { name: 'Overview' }).click();
 
     expect(await page.evaluate(() => localStorage.getItem('yapskippr.adminToken'))).toBeNull();
@@ -88,6 +88,12 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await page.getByRole('button', { name: 'Feedback' }).click();
     await page.getByLabel('Search feedback').fill('candidate-link');
     await expectVisible(page, page.getByRole('cell', { name: 'video-b' }));
+    await page.getByRole('button', { name: 'Inspect feedback candidate-link' }).click();
+    await expectVisible(page, page.getByRole('heading', { name: 'Feedback Details' }));
+    await expectVisible(page, page.getByText('Candidate features'));
+    await expectVisible(page, page.getByText('visibleLinkCount'));
+    await expectVisible(page, page.getByText('Transcript context'));
+    await expectVisible(page, page.getByText('This video is sponsored by Acme. Use code YAP.'));
     expect(await page.getByRole('cell', { name: 'video-a' }).count()).toBe(0);
     await page.getByLabel('Search feedback').fill('');
     await page.getByLabel('Feedback source filter').selectOption('frame-visible-link');

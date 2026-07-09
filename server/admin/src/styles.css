@@ -824,10 +824,27 @@ nav em {
   gap: 12px;
 }
 
+.feedback-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 0.9fr) minmax(0, 1.2fr);
+  gap: 12px;
+}
+
 .model-detail-grid section {
   display: grid;
   gap: 9px;
   min-width: 0;
+}
+
+.detail-section {
+  display: grid;
+  align-content: start;
+  gap: 9px;
+  min-width: 0;
+}
+
+.detail-section-wide {
+  grid-row: span 2;
 }
 
 .model-detail-grid h3 {
@@ -836,16 +853,36 @@ nav em {
   text-transform: uppercase;
 }
 
+.detail-section h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.detail-section p {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--muted);
+  line-height: 1.55;
+}
+
 .weight-list,
 .summary-list,
-.history-list {
+.history-list,
+.feature-list,
+.detail-evidence-list {
   display: grid;
   gap: 7px;
 }
 
 .weight-list div,
 .summary-list div,
-.history-row {
+.history-row,
+.feature-list div {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
@@ -859,12 +896,49 @@ nav em {
 
 .weight-list span,
 .summary-list span,
-.history-row span {
+.history-row span,
+.feature-list span {
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.summary-list strong,
+.feature-list strong {
+  min-width: 0;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-evidence-row {
+  display: grid;
+  grid-template-columns: 112px 112px 96px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+
+.detail-evidence-row span,
+.detail-evidence-row em {
+  overflow: hidden;
+  color: var(--muted);
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail-evidence-row p {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .weight-list strong[data-direction="positive"] {
@@ -1098,6 +1172,7 @@ tr:last-child td {
   .review-layout,
   .evaluation-head,
   .model-detail-grid,
+  .feedback-detail-grid,
   .promoted-model-summary,
   .metric-grid {
     grid-template-columns: 1fr;
@@ -1123,6 +1198,7 @@ tr:last-child td {
 
   .donut-wrap,
   .evidence-row,
+  .detail-evidence-row,
   .feedback-grid,
   .bar-row {
     grid-template-columns: 1fr;

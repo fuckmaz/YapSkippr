@@ -569,6 +569,7 @@ function FeedbackTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
   const [sourceFilter, setSourceFilter] = useState('all');
   const [reviewFilter, setReviewFilter] = useState('all');
   const [sort, setSort] = useState('received-desc');
+  const [selectedFeedbackId, setSelectedFeedbackId] = useState<string | null>(null);
   const sources = useMemo(() => uniqueSources(items), [items]);
   const filtered = useMemo(() => {
     return items
@@ -581,6 +582,11 @@ function FeedbackTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
       })
       .sort((a, b) => compareFeedback(a, b, sort));
   }, [items, query, reviewFilter, sort, sourceFilter]);
+  const selectedFeedback = selectedFeedbackId ? items.find((item) => item.id === selectedFeedbackId) ?? null : null;
+
+  useEffect(() => {
+    setSelectedFeedbackId(null);
+  }, [query, reviewFilter, sourceFilter]);
 
   return (
     <section className="page-grid">
@@ -616,7 +622,7 @@ function FeedbackTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
           </select>
         </label>
       </div>
-      <DataTable columns={['Received', 'Video', 'Occurrence', 'Source', 'Timecode', 'Heuristic', 'Model', 'Review']} rows={filtered.map((item) => [
+      <DataTable columns={['Received', 'Video', 'Occurrence', 'Source', 'Timecode', 'Heuristic', 'Model', 'Review', 'Actions']} rows={filtered.map((item) => [
         timeAgo(item.receivedAt),
         item.payload.videoId ?? 'unknown',
         item.payload.occurrenceId,
@@ -624,9 +630,93 @@ function FeedbackTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
         formatTime(item.payload.startSeconds),
         formatPercent(item.payload.heuristicConfidence),
         formatPercent(item.payload.modelConfidence),
-        item.review ? <LabelBadge label={item.review.label} /> : <span className="status pending">Pending</span>
+        item.review ? <LabelBadge label={item.review.label} /> : <span className="status pending">Pending</span>,
+        <div className="table-actions">
+          <button type="button" aria-label={`Inspect feedback ${item.payload.occurrenceId}`} onClick={() => setSelectedFeedbackId(item.id)}>
+            <Eye size={14} /> Inspect
+          </button>
+        </div>
       ])} />
+      {selectedFeedback ? <FeedbackDetailPanel item={selectedFeedback} /> : null}
     </section>
+  );
+}
+
+function FeedbackDetailPanel({ item }: { item: FeedbackRecord }): JSX.Element {
+  const features = Object.entries(item.payload.candidateFeatures ?? {}).sort(([a], [b]) => a.localeCompare(b));
+  const evidence = item.payload.evidenceSnapshot ?? [];
+
+  return (
+    <Panel title="Feedback Details">
+      <div className="feedback-detail-grid">
+        <section className="detail-section">
+          <h3>Candidate summary</h3>
+          <div className="summary-list">
+            <DetailRow label="Occurrence" value={item.payload.occurrenceId} />
+            <DetailRow label="Video" value={item.payload.videoId ?? 'unknown'} />
+            <DetailRow label="Timecode" value={formatTime(item.payload.startSeconds)} />
+            <DetailRow label="Source" value={sourceLabel(feedbackSource(item))} />
+            <DetailRow label="Received" value={timeAgo(item.receivedAt)} />
+          </div>
+        </section>
+        <section className="detail-section">
+          <h3>Model metadata</h3>
+          <div className="summary-list">
+            <DetailRow label="Heuristic confidence" value={formatPercent(item.payload.heuristicConfidence)} />
+            <DetailRow label="Model confidence" value={formatPercent(item.payload.modelConfidence)} />
+            <DetailRow label="Model" value={item.payload.modelId ?? 'fallback'} />
+            <DetailRow label="Version" value={item.payload.modelVersion ?? 'fallback'} />
+            <DetailRow label="Feature schema" value={item.payload.featureSchemaVersion === undefined ? '-' : String(item.payload.featureSchemaVersion)} />
+          </div>
+        </section>
+        <section className="detail-section detail-section-wide">
+          <h3>Evidence snapshot</h3>
+          {evidence.length ? (
+            <div className="detail-evidence-list">
+              {evidence.map((entry, index) => (
+                <div key={`${entry.source}-${entry.startSeconds}-${index}`} className="detail-evidence-row">
+                  <span>{sourceLabel(entry.source)}</span>
+                  <strong>{entry.kind}</strong>
+                  <em>{formatTime(entry.startSeconds)} · {formatPercent(entry.confidence)}</em>
+                  <p>{entry.detail ?? entry.reason}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyState title="No evidence snapshot" detail="This payload did not include detector evidence details." />
+          )}
+        </section>
+        <section className="detail-section">
+          <h3>Candidate features</h3>
+          {features.length ? (
+            <div className="feature-list">
+              {features.map(([feature, value]) => <DetailRow key={feature} label={feature} value={formatFeatureValue(value)} />)}
+            </div>
+          ) : (
+            <EmptyState title="No candidate features" detail="This payload cannot be used for model training yet." />
+          )}
+        </section>
+        <section className="detail-section">
+          <h3>Transcript context</h3>
+          <p>{item.payload.transcriptContext || 'No transcript context submitted.'}</p>
+          <h3>Extension feedback</h3>
+          <div className="summary-list">
+            <DetailRow label="Submitted as" value={item.payload.feedback} />
+            <DetailRow label="Viewer notes" value={item.payload.notes ?? 'No viewer note submitted.'} />
+            <DetailRow label="Admin review" value={item.review?.label ?? 'pending'} />
+          </div>
+        </section>
+      </div>
+    </Panel>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string | number }): JSX.Element {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
   );
 }
 
@@ -1291,6 +1381,10 @@ function formatTime(seconds: number): string {
 
 function formatPercent(value: number | undefined): string {
   return value === undefined ? '-' : `${Math.round(value * 100)}%`;
+}
+
+function formatFeatureValue(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(3);
 }
 
 function formatMetric(value: number | undefined): string {
