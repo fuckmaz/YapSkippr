@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { feedbackPayloadV2Schema } from './feedback/schema.js';
+import { buildTrainingDatasetRows } from './model/training-dataset.js';
 import { trainLogisticModel } from './model/trainer.js';
 import { getCompatibleTrainingExamples, summarizeTrainingReadiness } from './model/training-readiness.js';
 import { createMemoryRepository } from './store/memory.js';
@@ -111,6 +112,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   }));
   app.get('/admin/api/training-runs', { preHandler: requireAdmin(adminToken) }, async () => ({
     items: await repository.listTrainingRuns()
+  }));
+  app.get('/admin/api/training-dataset', { preHandler: requireAdmin(adminToken) }, async () => ({
+    items: buildTrainingDatasetRows(await repository.listFeedback())
   }));
 
   app.post('/admin/feedback/:id/review', { preHandler: requireAdmin(adminToken) }, async (request, reply) => {

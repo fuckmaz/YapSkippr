@@ -634,6 +634,101 @@ describe('YapSkippr server API', () => {
     await app.close();
   });
 
+  test('lists admin training dataset rows with trainability reasons', async () => {
+    const app = await buildServer({ adminToken: 'secret' });
+
+    const trainablePositive = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'dataset-positive',
+        videoId: 'video-dataset-a',
+        source: 'transcript'
+      })
+    });
+    const incompatibleNegative = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'dataset-incompatible',
+        videoId: 'video-dataset-b',
+        source: 'frame-visible-link',
+        feedback: 'false_positive',
+        featureSchemaVersion: 1
+      })
+    });
+    const timingFeedback = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'dataset-wrong-timing',
+        videoId: 'video-dataset-c',
+        source: 'frame-progress-bar',
+        feedback: 'wrong_timing'
+      })
+    });
+
+    for (const [response, label] of [
+      [trainablePositive, 'positive'],
+      [incompatibleNegative, 'false_positive'],
+      [timingFeedback, 'wrong_timing']
+    ] as const) {
+      expect(response.statusCode).toBe(201);
+      const review = await app.inject({
+        method: 'POST',
+        url: `/admin/feedback/${response.json().feedbackId}/review`,
+        headers: { 'x-admin-token': 'secret' },
+        payload: { label }
+      });
+      expect(review.statusCode).toBe(200);
+    }
+
+    const blocked = await app.inject({ method: 'GET', url: '/admin/api/training-dataset' });
+    expect(blocked.statusCode).toBe(401);
+
+    const dataset = await app.inject({
+      method: 'GET',
+      url: '/admin/api/training-dataset',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    expect(dataset.statusCode).toBe(200);
+    expect(dataset.json().items).toEqual([
+      expect.objectContaining({
+        occurrenceId: 'dataset-wrong-timing',
+        source: 'frame-progress-bar',
+        reviewLabel: 'wrong_timing',
+        trainingLabel: null,
+        featureSchemaVersion: 2,
+        featureCount: Object.keys(feedbackFixture().candidateFeatures ?? {}).length,
+        compatible: true,
+        trainable: false,
+        exclusionReason: 'wrong_timing is stored for boundary analysis, not confidence training.'
+      }),
+      expect.objectContaining({
+        occurrenceId: 'dataset-incompatible',
+        source: 'frame-visible-link',
+        reviewLabel: 'false_positive',
+        trainingLabel: 0,
+        featureSchemaVersion: 1,
+        compatible: false,
+        trainable: false,
+        exclusionReason: 'Feature schema 1 is not compatible with active schema 2.'
+      }),
+      expect.objectContaining({
+        occurrenceId: 'dataset-positive',
+        source: 'transcript',
+        reviewLabel: 'positive',
+        trainingLabel: 1,
+        featureSchemaVersion: 2,
+        compatible: true,
+        trainable: true,
+        exclusionReason: null
+      })
+    ]);
+
+    await app.close();
+  });
+
   test('rejects rollback for models that are not currently promoted', async () => {
     const repository = createMemoryRepository();
     await repository.saveModel(modelArtifact('model-a', '2026.07.01.000001'));

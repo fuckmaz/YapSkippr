@@ -96,6 +96,23 @@ interface TrainingRun {
   status: string;
 }
 
+interface TrainingDatasetRow {
+  feedbackId: string;
+  occurrenceId: string;
+  videoId: string | null;
+  source: string;
+  startSeconds: number;
+  receivedAt: string;
+  reviewedAt: string | null;
+  reviewLabel: ReviewLabel | null;
+  trainingLabel: 0 | 1 | null;
+  featureSchemaVersion: number | null;
+  featureCount: number;
+  compatible: boolean;
+  trainable: boolean;
+  exclusionReason: string | null;
+}
+
 interface PromotionRecord {
   id: string;
   modelId: string;
@@ -171,6 +188,7 @@ interface DashboardData {
   promoted: ModelArtifact | null;
   promotionHistory: PromotionRecord[];
   trainingRuns: TrainingRun[];
+  trainingDataset: TrainingDatasetRow[];
 }
 
 interface GlobalSearchResult {
@@ -206,7 +224,8 @@ export function App(): JSX.Element {
     models: [],
     promoted: null,
     promotionHistory: [],
-    trainingRuns: []
+    trainingRuns: [],
+    trainingDataset: []
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -218,11 +237,12 @@ export function App(): JSX.Element {
     setLoading(true);
     setError(null);
     try {
-      const [summary, feedback, models, training] = await Promise.all([
+      const [summary, feedback, models, training, trainingDataset] = await Promise.all([
         api<Summary>('/admin/api/summary', token),
         api<{ items: FeedbackRecord[] }>('/admin/api/feedback', token),
         api<{ items: ModelArtifact[]; promoted: ModelArtifact | null; history: PromotionRecord[] }>('/admin/api/models', token),
-        api<{ items: TrainingRun[] }>('/admin/api/training-runs', token)
+        api<{ items: TrainingRun[] }>('/admin/api/training-runs', token),
+        api<{ items: TrainingDatasetRow[] }>('/admin/api/training-dataset', token)
       ]);
       setData({
         summary,
@@ -230,7 +250,8 @@ export function App(): JSX.Element {
         models: models.items,
         promoted: models.promoted,
         promotionHistory: models.history,
-        trainingRuns: training.items
+        trainingRuns: training.items,
+        trainingDataset: trainingDataset.items
       });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : String(requestError));
@@ -334,7 +355,7 @@ export function App(): JSX.Element {
             {page === 'feedback' ? <FeedbackTable items={data.feedback} /> : null}
             {page === 'videos' ? <VideosTable items={data.feedback} /> : null}
             {page === 'models' ? <ModelsPage token={token} models={data.models} promoted={data.promoted} history={data.promotionHistory} onRefresh={refresh} /> : null}
-            {page === 'training' ? <TrainingPage token={token} summary={data.summary} runs={data.trainingRuns} promoted={data.promoted} onRefresh={refresh} /> : null}
+            {page === 'training' ? <TrainingPage token={token} summary={data.summary} runs={data.trainingRuns} trainingDataset={data.trainingDataset} promoted={data.promoted} onRefresh={refresh} /> : null}
           </>
         ) : null}
       </main>
@@ -1074,17 +1095,37 @@ function TrainingPage({
   token,
   summary,
   runs,
+  trainingDataset,
   promoted,
   onRefresh
 }: {
   token: string;
   summary: Summary | null;
   runs: TrainingRun[];
+  trainingDataset: TrainingDatasetRow[];
   promoted: ModelArtifact | null;
   onRefresh: () => Promise<void>;
 }): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [datasetSourceFilter, setDatasetSourceFilter] = useState('all');
+  const [datasetStatusFilter, setDatasetStatusFilter] = useState('all');
+  const datasetSources = useMemo(() => {
+    return [...new Set(trainingDataset.map((row) => row.source))]
+      .sort((a, b) => sourceLabel(a).localeCompare(sourceLabel(b)));
+  }, [trainingDataset]);
+  const visibleTrainingDataset = useMemo(() => {
+    return trainingDataset
+      .filter((row) => datasetSourceFilter === 'all' || row.source === datasetSourceFilter)
+      .filter((row) => {
+        if (datasetStatusFilter === 'all') return true;
+        if (datasetStatusFilter === 'trainable') return row.trainable;
+        if (datasetStatusFilter === 'blocked') return !row.trainable;
+        if (datasetStatusFilter === 'incompatible') return !row.compatible;
+        return true;
+      });
+  }, [datasetSourceFilter, datasetStatusFilter, trainingDataset]);
+
   async function train(): Promise<void> {
     setBusy(true);
     setError(null);
@@ -1105,6 +1146,45 @@ function TrainingPage({
       </button>
       {error ? <div className="inline-alert"><XCircle size={16} /> {error}</div> : null}
       <TrainingReadinessPanel readiness={summary?.trainingReadiness ?? null} />
+      <Panel title="Training Dataset Explorer">
+        <div className="table-toolbar">
+          <label className="filter-control">
+            <span>Source</span>
+            <select
+              aria-label="Training dataset source filter"
+              value={datasetSourceFilter}
+              onChange={(event) => setDatasetSourceFilter(event.target.value)}
+            >
+              <option value="all">All sources</option>
+              {datasetSources.map((source) => <option key={source} value={source}>{sourceLabel(source)}</option>)}
+            </select>
+          </label>
+          <label className="filter-control">
+            <span>Status</span>
+            <select
+              aria-label="Training dataset status filter"
+              value={datasetStatusFilter}
+              onChange={(event) => setDatasetStatusFilter(event.target.value)}
+            >
+              <option value="all">All rows</option>
+              <option value="trainable">Trainable</option>
+              <option value="blocked">Blocked</option>
+              <option value="incompatible">Incompatible schema</option>
+            </select>
+          </label>
+        </div>
+        <DataTable columns={['Candidate', 'Video', 'Source', 'Timecode', 'Review', 'Schema', 'Features', 'Trainable', 'Reason']} rows={visibleTrainingDataset.map((row) => [
+          row.occurrenceId,
+          row.videoId ?? 'unknown',
+          sourceLabel(row.source),
+          formatTime(row.startSeconds),
+          row.reviewLabel ? <LabelBadge label={row.reviewLabel} /> : <span className="status pending">Pending</span>,
+          row.featureSchemaVersion === null ? '-' : `Schema ${row.featureSchemaVersion}`,
+          row.featureCount,
+          row.trainable ? <span className="status positive">Trainable</span> : <span className="status pending">Blocked</span>,
+          row.exclusionReason ?? 'Ready for confidence training'
+        ])} />
+      </Panel>
       <Panel title="Current Promoted Model">
         {promoted ? (
           <div className="promoted-model-summary">

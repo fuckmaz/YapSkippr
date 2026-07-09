@@ -84,7 +84,17 @@ describe('YapSkippr admin dashboard browser workflow', () => {
 
     await page.getByRole('button', { name: 'Training' }).click();
     await expectVisible(page, page.getByRole('heading', { name: 'Training Readiness' }));
-    await expectVisible(page, page.getByText('Schema 2', { exact: true }));
+    await expectVisible(page, page.getByRole('heading', { name: 'Training Dataset Explorer' }));
+    await expectVisible(page, page.getByRole('columnheader', { name: 'Trainable' }));
+    await expectVisible(page, page.getByText('candidate-link').first());
+    await page.getByLabel('Training dataset source filter').selectOption('frame-visible-link');
+    await expectVisible(page, page.getByText('candidate-link').first());
+    expect(await page.getByText('candidate-positive').count()).toBe(0);
+    await page.getByLabel('Training dataset source filter').selectOption('all');
+    await page.getByLabel('Training dataset status filter').selectOption('blocked');
+    await expectVisible(page, page.getByText('Feedback has not been reviewed yet.').first());
+    await page.getByLabel('Training dataset status filter').selectOption('all');
+    await expectVisible(page, page.locator('.training-readiness').getByText('Schema 2', { exact: true }));
     await expectVisible(page, page.getByText('1 compatible'));
     await expectVisible(page, page.getByText('1 positive · 0 negative'));
     const rejectedTrainResponse = page.waitForResponse((response) => response.url().endsWith('/admin/models/train'));
