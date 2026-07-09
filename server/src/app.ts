@@ -13,6 +13,7 @@ import type { ReviewLabel, YapSkipprRepository } from './store/types.js';
 
 export interface BuildServerOptions {
   adminToken?: string;
+  allowedExtensionOrigins?: readonly string[];
   repository?: YapSkipprRepository;
 }
 
@@ -24,10 +25,13 @@ const reviewSchema = z.object({
 export async function buildServer(options: BuildServerOptions = {}): Promise<FastifyInstance> {
   const repository = options.repository ?? (process.env.DATABASE_URL ? createPostgresRepository(process.env.DATABASE_URL) : createMemoryRepository());
   const adminToken = options.adminToken ?? process.env.ADMIN_TOKEN ?? 'dev-admin-token';
+  const allowedOrigins = options.allowedExtensionOrigins ?? parseAllowedOrigins(process.env.ALLOWED_EXTENSION_ORIGINS);
   const app = Fastify({ logger: false });
 
   await app.register(cors, {
-    origin: true,
+    origin: (origin, callback) => {
+      callback(null, !origin || isAllowedCorsOrigin(origin, allowedOrigins));
+    },
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['content-type', 'x-admin-token']
   });
@@ -241,4 +245,26 @@ function renderAdminLoginPage(): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function parseAllowedOrigins(value: string | undefined): readonly string[] {
+  return (value ?? 'chrome-extension://*,moz-extension://*,http://localhost:*,http://127.0.0.1:*')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
+function isAllowedCorsOrigin(origin: string, allowedOrigins: readonly string[]): boolean {
+  return allowedOrigins.some((allowedOrigin) => originMatchesPattern(origin, allowedOrigin));
+}
+
+function originMatchesPattern(origin: string, pattern: string): boolean {
+  if (pattern === '*') return true;
+  if (!pattern.includes('*')) return origin === pattern;
+  const regex = new RegExp(`^${pattern.split('*').map(escapeRegex).join('.*')}$`);
+  return regex.test(origin);
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

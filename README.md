@@ -171,6 +171,12 @@ http://localhost:8787/api/v1/feedback
 
 The content script derives `GET /api/v1/model/latest` from that endpoint, validates the model schema, caches compatible models, and falls back to heuristic confidence if the server is unavailable.
 
+Set `ALLOWED_EXTENSION_ORIGINS` as a comma-separated allow list for browser-extension requests. Wildcards are supported, for example:
+
+```text
+ALLOWED_EXTENSION_ORIGINS=chrome-extension://*,moz-extension://*,https://admin.example.com
+```
+
 ## Project Structure
 
 ```text

@@ -5,6 +5,45 @@ import { createMemoryRepository } from '../src/store/memory';
 import { feedbackFixture } from './fixtures';
 
 describe('YapSkippr server API', () => {
+  test('only emits CORS allow-origin for configured extension origins', async () => {
+    const app = await buildServer({
+      adminToken: 'secret',
+      allowedExtensionOrigins: ['chrome-extension://*', 'moz-extension://*', 'https://trusted.example']
+    });
+
+    const chromePreflight = await app.inject({
+      method: 'OPTIONS',
+      url: '/api/v1/feedback',
+      headers: {
+        origin: 'chrome-extension://abcdef',
+        'access-control-request-method': 'POST'
+      }
+    });
+    expect(chromePreflight.headers['access-control-allow-origin']).toBe('chrome-extension://abcdef');
+
+    const trustedPreflight = await app.inject({
+      method: 'OPTIONS',
+      url: '/api/v1/feedback',
+      headers: {
+        origin: 'https://trusted.example',
+        'access-control-request-method': 'POST'
+      }
+    });
+    expect(trustedPreflight.headers['access-control-allow-origin']).toBe('https://trusted.example');
+
+    const rejectedPreflight = await app.inject({
+      method: 'OPTIONS',
+      url: '/api/v1/feedback',
+      headers: {
+        origin: 'https://untrusted.example',
+        'access-control-request-method': 'POST'
+      }
+    });
+    expect(rejectedPreflight.headers['access-control-allow-origin']).toBeUndefined();
+
+    await app.close();
+  });
+
   test('persists feedback v2 payloads and protects admin data', async () => {
     const app = await buildServer({ adminToken: 'secret' });
 
