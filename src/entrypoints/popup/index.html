@@ -126,6 +126,15 @@
             </span>
           </label>
           <p id="feedback-status" class="action-status" aria-live="polite">Feedback is local until an endpoint is saved.</p>
+          <label class="phrase-editor-field" for="transcript-phrase-groups">
+            Transcript phrase groups
+            <textarea id="transcript-phrase-groups" spellcheck="false"></textarea>
+          </label>
+          <div class="phrase-editor-actions">
+            <button id="save-transcript-phrase-groups" type="button">Save phrases</button>
+            <button id="reset-transcript-phrase-groups" type="button">Reset defaults</button>
+          </div>
+          <p id="transcript-phrase-status" class="action-status" aria-live="polite">Default transcript phrases active.</p>
           <div class="section-label">Evidence details</div>
           <ol id="scan-evidence-events" class="evidence-events"></ol>
         </section>

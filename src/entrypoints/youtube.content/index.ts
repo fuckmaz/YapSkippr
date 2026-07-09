@@ -10,8 +10,8 @@ import {
   startScreenshotFrameSampler
 } from '../../core/analysis/frame-sampler';
 import { detectVisibleLinkCue, isVisibleTextDetectionAvailable } from '../../core/analysis/link-detector';
-import { analyzeTranscriptCues } from '../../core/analysis/transcript-analyzer';
-import { FEEDBACK_ENDPOINT_STORAGE_KEY, MODEL_CACHE_STORAGE_KEY } from '../../core/extension-settings';
+import { analyzeTranscriptCues, parseTranscriptPhraseGroups, type TranscriptPhraseGroup } from '../../core/analysis/transcript-analyzer';
+import { FEEDBACK_ENDPOINT_STORAGE_KEY, MODEL_CACHE_STORAGE_KEY, TRANSCRIPT_PHRASE_GROUPS_STORAGE_KEY } from '../../core/extension-settings';
 import { normalizeFeedbackEndpoint } from '../../core/feedback';
 import {
   applyModelToCandidates,
@@ -154,6 +154,7 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
   const statusUi = await adapter.mountStatusUi();
   const evidence: TimedEvidence[] = [];
   let transcriptCues: TranscriptCue[] = [];
+  let transcriptPhraseGroups: readonly TranscriptPhraseGroup[] = parseTranscriptPhraseGroups(null);
   let activeCandidateModel = createFallbackActiveCandidateModel('No recognition model loaded yet.');
   let stopped = false;
   let sampleCount = 0;
@@ -285,13 +286,14 @@ async function startDetectionOnlyScan(adapter: ReturnType<typeof createYouTubeAd
     );
   }
   setScanProgress('Loading transcript cues...', 0.2, 'transcript', {}, { level: 'info', message: 'Transcript scan started' });
+  transcriptPhraseGroups = await loadTranscriptPhraseGroups();
 
   void adapter
     .loadTranscript()
     .then((cues) => {
       if (stopped) return;
       transcriptCues = cues;
-      const transcriptEvidence = analyzeTranscriptCues(cues);
+      const transcriptEvidence = analyzeTranscriptCues(cues, { phraseGroups: transcriptPhraseGroups });
       evidence.push(...transcriptEvidence);
       logger.info('transcript analyzed', { cues: cues.length, evidence: transcriptEvidence.length });
       publishEvidence(transcriptEvidence);
@@ -598,6 +600,15 @@ async function loadActiveCandidateModel(): Promise<ActiveCandidateModelState> {
         status: 'error'
       }
     };
+  }
+}
+
+async function loadTranscriptPhraseGroups(): Promise<readonly TranscriptPhraseGroup[]> {
+  try {
+    return parseTranscriptPhraseGroups(await getLocalStorageValue(TRANSCRIPT_PHRASE_GROUPS_STORAGE_KEY));
+  } catch (error) {
+    logger.warn('transcript phrase settings unavailable; using defaults', error);
+    return parseTranscriptPhraseGroups(null);
   }
 }
 

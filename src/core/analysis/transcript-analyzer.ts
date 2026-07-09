@@ -14,6 +14,10 @@ export interface TranscriptAnalysisOptions {
   contextCueCount?: number;
 }
 
+export type TranscriptPhraseGroupParseResult =
+  | { ok: true; groups: TranscriptPhraseGroup[] }
+  | { ok: false; error: string };
+
 export const DEFAULT_TRANSCRIPT_PHRASE_GROUPS: readonly TranscriptPhraseGroup[] = [
   {
     id: 'sponsor-start',
@@ -85,6 +89,33 @@ export const DEFAULT_TRANSCRIPT_PHRASE_GROUPS: readonly TranscriptPhraseGroup[] 
   }
 ];
 
+export function formatTranscriptPhraseGroupsForEditing(
+  groups: readonly TranscriptPhraseGroup[] = DEFAULT_TRANSCRIPT_PHRASE_GROUPS
+): string {
+  return JSON.stringify(groups, null, 2);
+}
+
+export function parseTranscriptPhraseGroups(value: unknown): readonly TranscriptPhraseGroup[] {
+  if (typeof value === 'string') {
+    const parsed = parseTranscriptPhraseGroupsJson(value);
+    return parsed.ok ? parsed.groups : DEFAULT_TRANSCRIPT_PHRASE_GROUPS;
+  }
+
+  const parsed = parseTranscriptPhraseGroupList(value);
+  return parsed.ok ? parsed.groups : DEFAULT_TRANSCRIPT_PHRASE_GROUPS;
+}
+
+export function parseTranscriptPhraseGroupsJson(json: string): TranscriptPhraseGroupParseResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return { ok: false, error: 'Transcript phrase groups must be valid JSON.' };
+  }
+
+  return parseTranscriptPhraseGroupList(parsed);
+}
+
 export function analyzeTranscriptCues(
   cues: TranscriptCue[],
   options: TranscriptAnalysisOptions = {}
@@ -115,6 +146,55 @@ export function analyzeTranscriptCues(
   }
 
   return evidence;
+}
+
+function parseTranscriptPhraseGroupList(value: unknown): TranscriptPhraseGroupParseResult {
+  if (!Array.isArray(value)) return { ok: false, error: 'Transcript phrase groups must be a JSON array.' };
+
+  const groups: TranscriptPhraseGroup[] = [];
+  for (const [index, group] of value.entries()) {
+    const parsed = parseTranscriptPhraseGroup(group, index);
+    if (!parsed.ok) return parsed;
+    groups.push(parsed.group);
+  }
+
+  return { ok: true, groups };
+}
+
+function parseTranscriptPhraseGroup(
+  value: unknown,
+  index: number
+): { ok: true; group: TranscriptPhraseGroup } | { ok: false; error: string } {
+  if (!isRecord(value)) return { ok: false, error: `Phrase group ${index + 1} must be an object.` };
+
+  const id = stringValue(value.id).trim();
+  if (!id) return { ok: false, error: `Phrase group ${index + 1} needs a non-empty id.` };
+
+  if (!isEvidenceKind(value.kind)) return { ok: false, error: `Phrase group "${id}" has an invalid kind.` };
+
+  const confidence = typeof value.confidence === 'number' && Number.isFinite(value.confidence) ? value.confidence : NaN;
+  if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
+    return { ok: false, error: `Phrase group "${id}" confidence must be a number from 0 to 1.` };
+  }
+
+  const reasonLabel = stringValue(value.reasonLabel).trim();
+  if (!reasonLabel) return { ok: false, error: `Phrase group "${id}" needs a reasonLabel.` };
+
+  if (!Array.isArray(value.phrases)) return { ok: false, error: `Phrase group "${id}" phrases must be an array.` };
+  const phrases = [...new Set(value.phrases.map((phrase) => stringValue(phrase).trim()).filter(Boolean))];
+  if (phrases.length === 0) return { ok: false, error: `Phrase group "${id}" needs at least one phrase.` };
+
+  return {
+    ok: true,
+    group: {
+      id,
+      kind: value.kind,
+      confidence,
+      reasonLabel,
+      phrases,
+      ...(typeof value.enabled === 'boolean' ? { enabled: value.enabled } : {})
+    }
+  };
 }
 
 function getCueWindowText(cues: readonly TranscriptCue[], startIndex: number, count: number): string {
@@ -159,4 +239,16 @@ function matchesPattern(normalizedText: string, pattern: string): boolean {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isEvidenceKind(value: unknown): value is EvidenceKind {
+  return value === 'ad-read-start' || value === 'ad-read-end' || value === 'ad-read-presence';
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }

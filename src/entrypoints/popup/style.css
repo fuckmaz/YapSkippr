@@ -356,13 +356,21 @@ section {
   font-size: 12px;
 }
 
+.phrase-editor-field {
+  display: grid;
+  gap: 5px;
+  color: #b9c1bd;
+  font-size: 12px;
+}
+
 .endpoint-field span {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
 }
 
-.endpoint-field input {
+.endpoint-field input,
+.phrase-editor-field textarea {
   min-width: 0;
   min-height: 30px;
   border: 1px solid #26302c;
@@ -370,6 +378,23 @@ section {
   background: #121514;
   color: #f3f5f4;
   font: inherit;
+}
+
+.phrase-editor-field textarea {
+  min-height: 150px;
+  padding: 8px;
+  resize: vertical;
+  font: 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.45;
+}
+
+.phrase-editor-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.phrase-editor-actions button {
+  flex: 1 1 0;
 }
 
 .evidence-events {

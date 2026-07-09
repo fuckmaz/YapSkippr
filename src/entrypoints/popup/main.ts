@@ -1,5 +1,14 @@
 import './style.css';
-import { FEEDBACK_ENDPOINT_STORAGE_KEY } from '../../core/extension-settings';
+import {
+  FEEDBACK_ENDPOINT_STORAGE_KEY,
+  TRANSCRIPT_PHRASE_GROUPS_STORAGE_KEY
+} from '../../core/extension-settings';
+import {
+  DEFAULT_TRANSCRIPT_PHRASE_GROUPS,
+  formatTranscriptPhraseGroupsForEditing,
+  parseTranscriptPhraseGroups,
+  parseTranscriptPhraseGroupsJson
+} from '../../core/analysis/transcript-analyzer';
 import { createOccurrenceFeedbackPayload, normalizeFeedbackEndpoint, type OccurrenceFeedbackValue, type OccurrenceFeedbackType } from '../../core/feedback';
 import { createIdleScanStatus, type ScanStatusEvidence, type ScanStatusSnapshot } from '../../core/scan-status';
 import { readStoredScanStatus, subscribeToStoredScanStatus } from '../../core/scan-status-storage';
@@ -43,6 +52,10 @@ const detailUpdated = document.querySelector('#detail-updated');
 const feedbackEndpointInput = document.querySelector<HTMLInputElement>('#feedback-endpoint');
 const saveFeedbackEndpointButton = document.querySelector<HTMLButtonElement>('#save-feedback-endpoint');
 const feedbackStatus = document.querySelector('#feedback-status');
+const transcriptPhraseGroupsInput = document.querySelector<HTMLTextAreaElement>('#transcript-phrase-groups');
+const saveTranscriptPhraseGroupsButton = document.querySelector<HTMLButtonElement>('#save-transcript-phrase-groups');
+const resetTranscriptPhraseGroupsButton = document.querySelector<HTMLButtonElement>('#reset-transcript-phrase-groups');
+const transcriptPhraseStatus = document.querySelector('#transcript-phrase-status');
 const scanEvidenceEvents = document.querySelector<HTMLOListElement>('#scan-evidence-events');
 const scanUpdated = document.querySelector('#scan-updated');
 let currentScanStatus: ScanStatusSnapshot = createIdleScanStatus();
@@ -87,9 +100,18 @@ saveFeedbackEndpointButton?.addEventListener('click', () => {
   void saveFeedbackEndpoint();
 });
 
+saveTranscriptPhraseGroupsButton?.addEventListener('click', () => {
+  void saveTranscriptPhraseGroups();
+});
+
+resetTranscriptPhraseGroupsButton?.addEventListener('click', () => {
+  void resetTranscriptPhraseGroups();
+});
+
 renderScanStatus(createIdleScanStatus());
 void loadScanStatus();
 void loadFeedbackEndpoint();
+void loadTranscriptPhraseGroups();
 const stopScanStatusSubscription = subscribeToStoredScanStatus(renderScanStatus);
 window.addEventListener('pagehide', stopScanStatusSubscription, { once: true });
 
@@ -333,6 +355,10 @@ function setFeedbackStatus(message: string): void {
   feedbackStatus?.replaceChildren(document.createTextNode(message));
 }
 
+function setTranscriptPhraseStatus(message: string): void {
+  transcriptPhraseStatus?.replaceChildren(document.createTextNode(message));
+}
+
 function setDetailedMode(enabled: boolean): void {
   if (developerPanel) developerPanel.hidden = !enabled;
   if (basicModeToggle) basicModeToggle.dataset.active = String(!enabled);
@@ -363,6 +389,45 @@ async function saveFeedbackEndpoint(): Promise<void> {
   feedbackEndpoint = normalized;
   await setLocalStorageValue(FEEDBACK_ENDPOINT_STORAGE_KEY, normalized);
   setFeedbackStatus('Feedback endpoint saved.');
+}
+
+async function loadTranscriptPhraseGroups(): Promise<void> {
+  try {
+    const value = await getLocalStorageValue(TRANSCRIPT_PHRASE_GROUPS_STORAGE_KEY);
+    const groups = parseTranscriptPhraseGroups(value);
+    if (transcriptPhraseGroupsInput) {
+      transcriptPhraseGroupsInput.value = formatTranscriptPhraseGroupsForEditing(groups);
+    }
+    setTranscriptPhraseStatus(value === undefined ? 'Default transcript phrases active.' : `${groups.length} transcript phrase groups loaded.`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (transcriptPhraseGroupsInput) {
+      transcriptPhraseGroupsInput.value = formatTranscriptPhraseGroupsForEditing(DEFAULT_TRANSCRIPT_PHRASE_GROUPS);
+    }
+    setTranscriptPhraseStatus(`Could not load transcript phrases: ${message}`);
+  }
+}
+
+async function saveTranscriptPhraseGroups(): Promise<void> {
+  const parsed = parseTranscriptPhraseGroupsJson(transcriptPhraseGroupsInput?.value ?? '');
+  if (!parsed.ok) {
+    setTranscriptPhraseStatus(parsed.error);
+    return;
+  }
+
+  await setLocalStorageValue(TRANSCRIPT_PHRASE_GROUPS_STORAGE_KEY, parsed.groups);
+  if (transcriptPhraseGroupsInput) {
+    transcriptPhraseGroupsInput.value = formatTranscriptPhraseGroupsForEditing(parsed.groups);
+  }
+  setTranscriptPhraseStatus(`Transcript phrase groups saved. Reload the YouTube tab to apply ${parsed.groups.length} groups.`);
+}
+
+async function resetTranscriptPhraseGroups(): Promise<void> {
+  await removeLocalStorageValue(TRANSCRIPT_PHRASE_GROUPS_STORAGE_KEY);
+  if (transcriptPhraseGroupsInput) {
+    transcriptPhraseGroupsInput.value = formatTranscriptPhraseGroupsForEditing(DEFAULT_TRANSCRIPT_PHRASE_GROUPS);
+  }
+  setTranscriptPhraseStatus('Default transcript phrases restored. Reload the YouTube tab to apply defaults.');
 }
 
 async function sendFeedbackForButton(button: HTMLButtonElement): Promise<void> {
@@ -558,9 +623,22 @@ function getLocalStorageValue(key: string): Promise<unknown> {
   });
 }
 
-function setLocalStorageValue(key: string, value: string): Promise<void> {
+function setLocalStorageValue(key: string, value: unknown): Promise<void> {
   return new Promise((resolve, reject) => {
     chrome.storage.local.set({ [key]: value }, () => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(new Error(error.message));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+function removeLocalStorageValue(key: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.remove(key, () => {
       const error = chrome.runtime.lastError;
       if (error) {
         reject(new Error(error.message));

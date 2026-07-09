@@ -133,13 +133,13 @@ npm run typecheck:server
 
 ### Transcript Phrase Tuning
 
-Transcript ad-read cues are configured in `DEFAULT_TRANSCRIPT_PHRASE_GROUPS` inside `src/core/analysis/transcript-analyzer.ts`. Each group defines:
+Transcript ad-read cues are configured by default in `DEFAULT_TRANSCRIPT_PHRASE_GROUPS` inside `src/core/analysis/transcript-analyzer.ts`. For local testing, open the extension popup, switch to Detailed mode, edit the Transcript phrase groups JSON, save it, and reload the YouTube tab. Each group defines:
 
 - `kind`: whether a match is an ad-read start, presence cue, or end cue.
 - `confidence`: how strongly the match contributes to candidate scoring.
 - `phrases`: the editable strings to look for in YouTube caption text.
 
-Supplying a custom `phraseGroups` list to `analyzeTranscriptCues()` replaces the defaults, which keeps future developer-mode UI or stored settings straightforward.
+Supplying a custom `phraseGroups` list to `analyzeTranscriptCues()` replaces the defaults. The popup stores edited phrase groups in `chrome.storage.local` under `yapskippr.transcriptPhraseGroups`; resetting the editor removes that override and restores the defaults.
 
 ## Feedback Server And Admin Dashboard
 
