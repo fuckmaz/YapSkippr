@@ -131,7 +131,7 @@ npm run test:dashboard
 npm run typecheck:server
 ```
 
-`npm run test:e2e` rebuilds both Chrome and Firefox extension outputs before checking their generated manifests and bundled entrypoints.
+`npm run test:e2e` rebuilds the installable Chrome and Firefox artifacts before checking generated manifests, bundled entrypoints, and packaged zip/xpi contents.
 
 ### Transcript Phrase Tuning
 

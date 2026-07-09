@@ -1,20 +1,22 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outputDir = join(rootDir, '.output');
 const installableDir = join(outputDir, 'installable');
 
+removeExistingZipArtifacts();
+
 runNpmScript('build');
 runNpmScript('zip');
-const chromeZip = newestZip();
+const chromeZip = newestBrowserZip('chrome');
 
 runNpmScript('build:firefox');
 runNpmScript('zip:firefox');
-const firefoxZip = newestZip(new Set([chromeZip]));
+const firefoxZip = newestBrowserZip('firefox');
 
 rmSync(installableDir, { force: true, recursive: true });
 mkdirSync(installableDir, { recursive: true });
@@ -47,11 +49,18 @@ function runNpmScript(scriptName) {
   }
 }
 
-function newestZip(exclude = new Set()) {
-  const zips = findFiles(outputDir, (path) => path.endsWith('.zip') && !path.includes(`${installableDir}/`) && !exclude.has(path));
+function removeExistingZipArtifacts() {
+  rmSync(installableDir, { force: true, recursive: true });
+  for (const zip of findFiles(outputDir, (path) => path.endsWith('.zip') && !path.includes(`${installableDir}/`))) {
+    rmSync(zip, { force: true });
+  }
+}
+
+function newestBrowserZip(browser) {
+  const zips = findFiles(outputDir, (path) => basename(path).endsWith(`-${browser}.zip`) && !path.includes(`${installableDir}/`));
   const newest = zips.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
   if (!newest) {
-    throw new Error('WXT did not produce a zip file.');
+    throw new Error(`WXT did not produce a ${browser} zip file.`);
   }
   return newest;
 }
