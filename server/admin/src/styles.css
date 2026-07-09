@@ -870,6 +870,16 @@ nav em {
   line-height: 1.55;
 }
 
+.muted-note {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .weight-list,
 .summary-list,
 .history-list,

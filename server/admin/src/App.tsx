@@ -107,6 +107,10 @@ interface ModelEvaluation {
   modelId: string;
   metrics: Record<string, number>;
   trainingSetSummary: Record<string, number>;
+  promotedComparison: null | {
+    promotedModelId: string;
+    metricDeltas: Record<string, number>;
+  };
 }
 
 interface TrainingReadiness {
@@ -936,6 +940,7 @@ function ModelEvaluationPanel({ model, evaluation }: { model: ModelArtifact; eva
     .slice(0, 10);
   const summary = Object.entries(evaluation.trainingSetSummary);
   const thresholds = Object.entries(model.thresholds).sort(([a], [b]) => a.localeCompare(b));
+  const comparison = Object.entries(evaluation.promotedComparison?.metricDeltas ?? {}).sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <Panel title="Model Evaluation">
@@ -973,6 +978,17 @@ function ModelEvaluationPanel({ model, evaluation }: { model: ModelArtifact; eva
           <div className="summary-list">
             {thresholds.map(([label, value]) => <DetailRow key={label} label={label} value={formatMetric(value)} />)}
           </div>
+        </section>
+        <section>
+          <h3>Promoted comparison</h3>
+          {evaluation.promotedComparison ? (
+            <div className="summary-list">
+              <DetailRow label="Baseline" value={evaluation.promotedComparison.promotedModelId} />
+              {comparison.map(([label, value]) => <DetailRow key={label} label={`${label} delta`} value={formatSignedMetric(value)} />)}
+            </div>
+          ) : (
+            <p className="muted-note">No promoted baseline yet.</p>
+          )}
         </section>
         <section>
           <h3>Training summary</h3>

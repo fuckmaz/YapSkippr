@@ -156,6 +156,8 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.getByText('Artifact metadata'));
     await expectVisible(page, page.getByText('Feature schema'));
     await expectVisible(page, page.getByText('Thresholds'));
+    await expectVisible(page, page.getByText('Promoted comparison'));
+    await expectVisible(page, page.getByText('No promoted baseline yet.'));
     await expectVisible(page, page.locator('.model-detail-grid').getByText('positive', { exact: true }));
 
     let failedPromoteIntercepted = false;

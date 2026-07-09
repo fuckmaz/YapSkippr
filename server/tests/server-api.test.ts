@@ -525,9 +525,38 @@ describe('YapSkippr server API', () => {
 
     await app.close();
   });
+
+  test('model evaluation compares metrics against the promoted model', async () => {
+    const repository = createMemoryRepository();
+    await repository.saveModel(modelArtifact('model-promoted', '2026.07.01.000001', { accuracy: 0.72, f1: 0.68, auc: 0.74 }));
+    await repository.saveModel(modelArtifact('model-candidate', '2026.07.01.000002', { accuracy: 0.81, f1: 0.73, auc: 0.79 }));
+    await repository.promoteModel('model-promoted');
+    const app = await buildServer({ adminToken: 'secret', repository });
+
+    const evaluation = await app.inject({
+      method: 'GET',
+      url: '/admin/models/model-candidate/evaluation',
+      headers: { 'x-admin-token': 'secret' }
+    });
+
+    expect(evaluation.statusCode).toBe(200);
+    expect(evaluation.json()).toMatchObject({
+      modelId: 'model-candidate',
+      promotedComparison: {
+        promotedModelId: 'model-promoted',
+        metricDeltas: {
+          accuracy: 0.09,
+          f1: 0.05,
+          auc: 0.05
+        }
+      }
+    });
+
+    await app.close();
+  });
 });
 
-function modelArtifact(modelId: string, version: string): CandidateModelArtifact {
+function modelArtifact(modelId: string, version: string, metricOverrides: Record<string, number> = {}): CandidateModelArtifact {
   return {
     modelId,
     modelVersion: version,
@@ -547,7 +576,8 @@ function modelArtifact(modelId: string, version: string): CandidateModelArtifact
       precision: 0.8,
       recall: 0.7,
       f1: 0.75,
-      auc: 0.85
+      auc: 0.85,
+      ...metricOverrides
     },
     trainingSetSummary: {
       examples: 2,

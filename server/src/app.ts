@@ -131,7 +131,18 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     const { id } = request.params as { id: string };
     const model = await repository.getModel(id);
     if (!model) return reply.status(404).send({ ok: false, error: 'Model not found.' });
-    return { modelId: id, metrics: model.metrics, trainingSetSummary: model.trainingSetSummary };
+    const promoted = await repository.getPromotedModel();
+    return {
+      modelId: id,
+      metrics: model.metrics,
+      trainingSetSummary: model.trainingSetSummary,
+      promotedComparison: promoted
+        ? {
+            promotedModelId: promoted.modelId,
+            metricDeltas: compareModelMetrics(model.metrics, promoted.metrics)
+          }
+        : null
+    };
   });
 
   app.get('/admin', async (request, reply) => {
@@ -197,6 +208,22 @@ function parseCookies(cookieHeader: string | undefined): Record<string, string> 
       return [[key, valueParts.join('=')]];
     })
   );
+}
+
+function compareModelMetrics(metrics: Record<string, number>, baseline: Record<string, number>): Record<string, number> {
+  const names = new Set([...Object.keys(metrics), ...Object.keys(baseline)]);
+  return Object.fromEntries(
+    [...names].sort().flatMap((name) => {
+      const value = metrics[name];
+      const baselineValue = baseline[name];
+      if (!Number.isFinite(value) || !Number.isFinite(baselineValue)) return [];
+      return [[name, roundMetricDelta((value as number) - (baselineValue as number))]];
+    })
+  );
+}
+
+function roundMetricDelta(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
 }
 
 function renderAdminLoginPage(): string {
