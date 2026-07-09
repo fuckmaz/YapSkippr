@@ -5,6 +5,7 @@ export interface ProgressBarDetectionOptions {
   minWidthRatio: number;
   minContrast: number;
   minRows: number;
+  minTrackExtensionRatio: number;
 }
 
 interface HorizontalRun {
@@ -18,7 +19,8 @@ const DEFAULT_OPTIONS: ProgressBarDetectionOptions = {
   ignoreBottomRatio: 0.18,
   minWidthRatio: 0.35,
   minContrast: 80,
-  minRows: 2
+  minRows: 2,
+  minTrackExtensionRatio: 0.08
 };
 
 export function detectProgressBarCue(
@@ -55,7 +57,9 @@ export function detectProgressBarCue(
 
   if (runs.length === 0) return [];
 
-  const groupedRuns = groupAdjacentRuns(runs).filter((group) => group.length >= resolved.minRows);
+  const groupedRuns = groupAdjacentRuns(runs)
+    .filter((group) => group.length >= resolved.minRows)
+    .filter((group) => hasTrackExtension(group, imageData, resolved.minTrackExtensionRatio));
   if (groupedRuns.length === 0) return [];
 
   const bestGroup = groupedRuns.sort((a, b) => scoreRunGroup(b, width) - scoreRunGroup(a, width))[0];
@@ -98,6 +102,32 @@ function isBrightContrastingPixel(imageData: ImageData, x: number, y: number, mi
 function pixelBrightness(imageData: ImageData, x: number, y: number): number {
   const offset = (y * imageData.width + x) * 4;
   return ((imageData.data[offset] ?? 0) + (imageData.data[offset + 1] ?? 0) + (imageData.data[offset + 2] ?? 0)) / 3;
+}
+
+function hasTrackExtension(group: HorizontalRun[], imageData: ImageData, minTrackExtensionRatio: number): boolean {
+  const minTrackLength = Math.ceil(imageData.width * minTrackExtensionRatio);
+  const minMatchingRows = Math.ceil(group.length * 0.6);
+  const matchingRows = group.filter((run) => {
+    const rightTrack = countTrackPixels(imageData, run.y, run.endX + 1, 1);
+    const leftTrack = countTrackPixels(imageData, run.y, run.startX - 1, -1);
+    return Math.max(rightTrack, leftTrack) >= minTrackLength;
+  }).length;
+
+  return matchingRows >= minMatchingRows;
+}
+
+function countTrackPixels(imageData: ImageData, y: number, startX: number, direction: -1 | 1): number {
+  let count = 0;
+  for (let x = startX; x >= 0 && x < imageData.width; x += direction) {
+    if (!isDimTrackPixel(imageData, x, y)) break;
+    count += 1;
+  }
+  return count;
+}
+
+function isDimTrackPixel(imageData: ImageData, x: number, y: number): boolean {
+  const brightness = pixelBrightness(imageData, x, y);
+  return brightness >= 50 && brightness <= 155;
 }
 
 function groupAdjacentRuns(runs: HorizontalRun[]): HorizontalRun[][] {
