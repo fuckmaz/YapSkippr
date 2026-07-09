@@ -49,6 +49,13 @@ test('extracts deterministic feature vectors from segment candidates', () => {
       qrCount: 1,
       progressBarCount: 0,
       visibleLinkCount: 1,
+      qrLocationCount: 0,
+      avgQrBoxAreaPixels: 0,
+      avgQrBoxCenterX: 0,
+      avgQrBoxCenterY: 0,
+      avgProgressBarWidthPixels: 0,
+      avgProgressBarY: 0,
+      avgProgressBarRows: 0,
       maxTranscriptConfidence: 0.85,
       avgTranscriptConfidence: 0.775,
       maxQrConfidence: 0.9,
@@ -74,5 +81,50 @@ test('extracts deterministic feature vectors from segment candidates', () => {
       nearbyEndCue: 1
     },
     phraseGroupIds: ['sponsor-start']
+  });
+});
+
+test('extracts visual geometry features from frame evidence', () => {
+  const extracted = extractCandidateFeatures(candidate({
+    evidence: [
+      evidence({
+        source: 'frame-qr-code',
+        kind: 'ad-read-presence',
+        startSeconds: 108,
+        confidence: 0.9,
+        reason: 'qr',
+        raw: {
+          value: 'https://brand.example/qr',
+          location: {
+            topLeftCorner: { x: 100, y: 40 },
+            bottomRightCorner: { x: 180, y: 120 }
+          }
+        }
+      }),
+      evidence({
+        source: 'frame-progress-bar',
+        kind: 'ad-read-presence',
+        startSeconds: 112,
+        confidence: 0.62,
+        reason: 'bar',
+        raw: {
+          startX: 20,
+          endX: 140,
+          y: 280,
+          rows: 3
+        }
+      })
+    ]
+  }));
+
+  expect(FEATURE_SCHEMA_VERSION).toBe(2);
+  expect(extracted.features).toMatchObject({
+    qrLocationCount: 1,
+    avgQrBoxAreaPixels: 6400,
+    avgQrBoxCenterX: 140,
+    avgQrBoxCenterY: 80,
+    avgProgressBarWidthPixels: 121,
+    avgProgressBarY: 280,
+    avgProgressBarRows: 3
   });
 });

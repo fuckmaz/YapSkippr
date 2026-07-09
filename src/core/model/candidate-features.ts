@@ -1,6 +1,6 @@
 import type { EvidenceSource, SegmentCandidate, TimedEvidence } from '../types';
 
-export const FEATURE_SCHEMA_VERSION = 1;
+export const FEATURE_SCHEMA_VERSION = 2;
 
 export interface ExtractCandidateFeatureOptions {
   videoDurationSeconds?: number | null;
@@ -22,6 +22,13 @@ export interface CandidateFeatureVector extends Record<string, number> {
   qrCount: number;
   progressBarCount: number;
   visibleLinkCount: number;
+  qrLocationCount: number;
+  avgQrBoxAreaPixels: number;
+  avgQrBoxCenterX: number;
+  avgQrBoxCenterY: number;
+  avgProgressBarWidthPixels: number;
+  avgProgressBarY: number;
+  avgProgressBarRows: number;
   maxTranscriptConfidence: number;
   avgTranscriptConfidence: number;
   maxQrConfidence: number;
@@ -88,6 +95,8 @@ export function extractCandidateFeatures(
     : round(Math.max(0, candidate.endSeconds - candidate.startSeconds));
   const videoDurationSeconds = options.videoDurationSeconds ?? null;
   const textCorpus = buildTextCorpus(candidate.evidence, options.transcriptContext);
+  const qrGeometry = summarizeQrGeometry(qrEvidence);
+  const progressBarGeometry = summarizeProgressBarGeometry(progressBarEvidence);
 
   return {
     schemaVersion: FEATURE_SCHEMA_VERSION,
@@ -100,6 +109,13 @@ export function extractCandidateFeatures(
       qrCount: qrEvidence.length,
       progressBarCount: progressBarEvidence.length,
       visibleLinkCount: visibleLinkEvidence.length,
+      qrLocationCount: qrGeometry.count,
+      avgQrBoxAreaPixels: qrGeometry.avgAreaPixels,
+      avgQrBoxCenterX: qrGeometry.avgCenterX,
+      avgQrBoxCenterY: qrGeometry.avgCenterY,
+      avgProgressBarWidthPixels: progressBarGeometry.avgWidthPixels,
+      avgProgressBarY: progressBarGeometry.avgY,
+      avgProgressBarRows: progressBarGeometry.avgRows,
       maxTranscriptConfidence: maxConfidence(transcriptEvidence),
       avgTranscriptConfidence: avgConfidence(transcriptEvidence),
       maxQrConfidence: maxConfidence(qrEvidence),
@@ -154,6 +170,62 @@ function evidenceTimeSpanSeconds(evidence: readonly TimedEvidence[]): number {
   return round(Math.max(...starts) - Math.min(...starts));
 }
 
+function summarizeQrGeometry(evidence: readonly TimedEvidence[]): {
+  count: number;
+  avgAreaPixels: number;
+  avgCenterX: number;
+  avgCenterY: number;
+} {
+  const boxes = evidence.flatMap((item) => {
+    if (!isRecord(item.raw) || !isRecord(item.raw.location)) return [];
+    const topLeft = getPoint(item.raw.location.topLeftCorner);
+    const bottomRight = getPoint(item.raw.location.bottomRightCorner);
+    if (!topLeft || !bottomRight) return [];
+
+    const width = Math.max(0, bottomRight.x - topLeft.x);
+    const height = Math.max(0, bottomRight.y - topLeft.y);
+    if (width <= 0 || height <= 0) return [];
+
+    return [{
+      areaPixels: width * height,
+      centerX: topLeft.x + width / 2,
+      centerY: topLeft.y + height / 2
+    }];
+  });
+
+  return {
+    count: boxes.length,
+    avgAreaPixels: avgValues(boxes.map((box) => box.areaPixels)),
+    avgCenterX: avgValues(boxes.map((box) => box.centerX)),
+    avgCenterY: avgValues(boxes.map((box) => box.centerY))
+  };
+}
+
+function summarizeProgressBarGeometry(evidence: readonly TimedEvidence[]): {
+  avgWidthPixels: number;
+  avgY: number;
+  avgRows: number;
+} {
+  const bars = evidence.flatMap((item) => {
+    if (!isRecord(item.raw)) return [];
+    const startX = finiteNumber(item.raw.startX);
+    const endX = finiteNumber(item.raw.endX);
+    const y = finiteNumber(item.raw.y);
+    const rows = finiteNumber(item.raw.rows);
+    if (startX === null || endX === null || y === null || rows === null) return [];
+
+    const width = Math.max(0, endX - startX + 1);
+    if (width <= 0 || rows <= 0) return [];
+    return [{ width, y, rows }];
+  });
+
+  return {
+    avgWidthPixels: avgValues(bars.map((bar) => bar.width)),
+    avgY: avgValues(bars.map((bar) => bar.y)),
+    avgRows: avgValues(bars.map((bar) => bar.rows))
+  };
+}
+
 function hasNearbyEndCue(candidate: SegmentCandidate): boolean {
   return candidate.evidence.some((item) => {
     if (item.kind !== 'ad-read-end') return false;
@@ -162,6 +234,23 @@ function hasNearbyEndCue(candidate: SegmentCandidate): boolean {
     }
     return item.startSeconds >= candidate.startSeconds && item.startSeconds <= candidate.startSeconds + 240;
   });
+}
+
+function getPoint(value: unknown): { x: number; y: number } | null {
+  if (!isRecord(value)) return null;
+  const x = finiteNumber(value.x);
+  const y = finiteNumber(value.y);
+  if (x === null || y === null) return null;
+  return { x, y };
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function avgValues(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  return round(values.reduce((total, value) => total + value, 0) / values.length);
 }
 
 function extractPhraseGroupIds(evidence: readonly TimedEvidence[]): string[] {

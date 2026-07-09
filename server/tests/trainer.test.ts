@@ -32,7 +32,7 @@ test('trains deterministic JSON model artifacts from labeled fixtures', () => {
 
   expect(first).toEqual(second);
   expect(first.modelId).toMatch(/^model_/);
-  expect(first.featureSchemaVersion).toBe(1);
+  expect(first.featureSchemaVersion).toBe(2);
   expect(first.trainingSetSummary).toMatchObject({
     examples: 2,
     positives: 1,

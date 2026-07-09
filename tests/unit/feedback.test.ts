@@ -17,7 +17,7 @@ test('creates a server feedback payload for a detected occurrence', () => {
         modelId: 'model-local-1',
         modelVersion: '2026.07.07',
         modelSource: 'downloaded',
-        featureSchemaVersion: 1,
+        featureSchemaVersion: 2,
         heuristicConfidence: 0.72,
         modelConfidence: 0.31,
         candidateFeatures: {
@@ -55,7 +55,7 @@ test('creates a server feedback payload for a detected occurrence', () => {
     modelId: 'model-local-1',
     modelVersion: '2026.07.07',
     modelSource: 'downloaded',
-    featureSchemaVersion: 1,
+    featureSchemaVersion: 2,
     heuristicConfidence: 0.72,
     modelConfidence: 0.31,
     candidateFeatures: {

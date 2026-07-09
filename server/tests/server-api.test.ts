@@ -196,7 +196,7 @@ describe('YapSkippr server API', () => {
     expect(train.statusCode).toBe(201);
     expect(train.json().model).toMatchObject({
       modelId: expect.any(String),
-      featureSchemaVersion: 1,
+      featureSchemaVersion: 2,
       weights: expect.objectContaining({
         heuristicConfidence: expect.any(Number)
       }),
@@ -370,7 +370,7 @@ function modelArtifact(modelId: string, version: string): CandidateModelArtifact
   return {
     modelId,
     modelVersion: version,
-    featureSchemaVersion: 1,
+    featureSchemaVersion: 2,
     createdAt: '2026-07-07T10:00:00.000Z',
     promotedAt: null,
     intercept: 0,
