@@ -42,6 +42,7 @@ test('Chrome build output contains the YouTube content script and preserved meta
   expect(popupHtml).toContain('Evidence');
   expect(popupHtml).toContain('Detailed mode');
   expect(popupHtml).toContain('Feedback API endpoint');
+  expect(popupHtml).toContain('Open admin dashboard');
   expect(popupHtml).toContain('Transcript phrase groups');
   expect(popupHtml).toContain('Recent activity');
 
@@ -59,6 +60,6 @@ test('Chrome build output contains the YouTube content script and preserved meta
   expect(popupScript).toContain('YAPSKIPPR_SET_FAST_SCAN');
   expect(popupScript).toContain('yapskippr.feedbackEndpoint');
   expect(popupScript).toContain('yapskippr.transcriptPhraseGroups');
-  expect(popupScript).toContain('Feedback endpoint saved');
+  expect(popupScript).toContain('Feedback endpoint saved. Admin dashboard link ready.');
   expect(popupScript).toContain('Transcript phrase groups saved');
 });

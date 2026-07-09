@@ -172,6 +172,8 @@ http://localhost:8787/api/v1/feedback
 
 The content script derives `GET /api/v1/model/latest` from that endpoint, validates the model schema, caches compatible models, and falls back to heuristic confidence if the server is unavailable.
 
+After saving a valid feedback endpoint in Detailed mode, the popup also shows an `Open admin dashboard` shortcut for the same server origin.
+
 Production deployment files for a Debian 12/Plesk host live in `server/deploy/README.md`. That guide includes the loopback-only production compose stack, required environment template, TLS reverse-proxy notes, and the `backup-postgres.sh` Postgres backup helper.
 
 Set `ALLOWED_EXTENSION_ORIGINS` as a comma-separated allow list for browser-extension requests. Wildcards are supported, for example:

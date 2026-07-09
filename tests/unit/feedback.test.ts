@@ -1,4 +1,4 @@
-import { createOccurrenceFeedbackPayload } from '../../src/core/feedback';
+import { createOccurrenceFeedbackPayload, deriveAdminDashboardUrl } from '../../src/core/feedback';
 
 test('creates a server feedback payload for a detected occurrence', () => {
   expect(
@@ -76,4 +76,17 @@ test('creates a server feedback payload for a detected occurrence', () => {
     transcriptContext: 'Before the segment. The ad read starts here. After the segment.',
     createdAt: '1970-01-01T00:00:01.000Z'
   });
+});
+
+test('derives an admin dashboard URL from a saved feedback endpoint', () => {
+  expect(deriveAdminDashboardUrl('https://feedback.example.com/api/v1/feedback')).toBe('https://feedback.example.com/admin');
+  expect(deriveAdminDashboardUrl(' http://localhost:8787/api/v1/feedback ')).toBe('http://localhost:8787/admin');
+  expect(deriveAdminDashboardUrl('https://example.com/custom/path')).toBe('https://example.com/admin');
+});
+
+test('does not derive an admin dashboard URL from invalid feedback endpoints', () => {
+  expect(deriveAdminDashboardUrl('')).toBeNull();
+  expect(deriveAdminDashboardUrl(null)).toBeNull();
+  expect(deriveAdminDashboardUrl('ftp://feedback.example.com/api/v1/feedback')).toBeNull();
+  expect(deriveAdminDashboardUrl('not a url')).toBeNull();
 });

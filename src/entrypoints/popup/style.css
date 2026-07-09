@@ -380,6 +380,28 @@ section {
   font: inherit;
 }
 
+.admin-dashboard-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  border: 1px solid #315244;
+  border-radius: 6px;
+  background: #122119;
+  color: #8de0b3;
+  font-size: 12px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.admin-dashboard-link:hover {
+  border-color: #39d98a;
+}
+
+.admin-dashboard-link[hidden] {
+  display: none;
+}
+
 .phrase-editor-field textarea {
   min-height: 150px;
   padding: 8px;

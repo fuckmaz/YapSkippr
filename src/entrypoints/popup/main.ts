@@ -9,7 +9,13 @@ import {
   parseTranscriptPhraseGroups,
   parseTranscriptPhraseGroupsJson
 } from '../../core/analysis/transcript-analyzer';
-import { createOccurrenceFeedbackPayload, normalizeFeedbackEndpoint, type OccurrenceFeedbackValue, type OccurrenceFeedbackType } from '../../core/feedback';
+import {
+  createOccurrenceFeedbackPayload,
+  deriveAdminDashboardUrl,
+  normalizeFeedbackEndpoint,
+  type OccurrenceFeedbackValue,
+  type OccurrenceFeedbackType
+} from '../../core/feedback';
 import { createIdleScanStatus, type ScanStatusEvidence, type ScanStatusSnapshot } from '../../core/scan-status';
 import { readStoredScanStatus, subscribeToStoredScanStatus } from '../../core/scan-status-storage';
 import { createPopupScanStatusView } from '../../ui/popup-scan-status-view';
@@ -51,6 +57,7 @@ const detailModelMessage = document.querySelector('#detail-model-message');
 const detailUpdated = document.querySelector('#detail-updated');
 const feedbackEndpointInput = document.querySelector<HTMLInputElement>('#feedback-endpoint');
 const saveFeedbackEndpointButton = document.querySelector<HTMLButtonElement>('#save-feedback-endpoint');
+const adminDashboardLink = document.querySelector<HTMLAnchorElement>('#admin-dashboard-link');
 const feedbackStatus = document.querySelector('#feedback-status');
 const transcriptPhraseGroupsInput = document.querySelector<HTMLTextAreaElement>('#transcript-phrase-groups');
 const saveTranscriptPhraseGroupsButton = document.querySelector<HTMLButtonElement>('#save-transcript-phrase-groups');
@@ -355,6 +362,19 @@ function setFeedbackStatus(message: string): void {
   feedbackStatus?.replaceChildren(document.createTextNode(message));
 }
 
+function updateAdminDashboardLink(endpoint: string | null): void {
+  if (!adminDashboardLink) return;
+  const adminUrl = deriveAdminDashboardUrl(endpoint);
+  if (!adminUrl) {
+    adminDashboardLink.hidden = true;
+    adminDashboardLink.removeAttribute('href');
+    return;
+  }
+
+  adminDashboardLink.hidden = false;
+  adminDashboardLink.href = adminUrl;
+}
+
 function setTranscriptPhraseStatus(message: string): void {
   transcriptPhraseStatus?.replaceChildren(document.createTextNode(message));
 }
@@ -370,9 +390,11 @@ async function loadFeedbackEndpoint(): Promise<void> {
     const value = await getLocalStorageValue(FEEDBACK_ENDPOINT_STORAGE_KEY);
     feedbackEndpoint = typeof value === 'string' ? normalizeFeedbackEndpoint(value) : null;
     if (feedbackEndpointInput && feedbackEndpoint) feedbackEndpointInput.value = feedbackEndpoint;
+    updateAdminDashboardLink(feedbackEndpoint);
     setFeedbackStatus(feedbackEndpoint ? 'Feedback endpoint ready.' : 'Feedback is local until an endpoint is saved.');
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    updateAdminDashboardLink(null);
     setFeedbackStatus(`Could not load feedback endpoint: ${message}`);
   }
 }
@@ -382,13 +404,15 @@ async function saveFeedbackEndpoint(): Promise<void> {
   if (!normalized) {
     feedbackEndpoint = null;
     await setLocalStorageValue(FEEDBACK_ENDPOINT_STORAGE_KEY, '');
+    updateAdminDashboardLink(null);
     setFeedbackStatus('Enter an http(s) feedback endpoint before sending reports.');
     return;
   }
 
   feedbackEndpoint = normalized;
   await setLocalStorageValue(FEEDBACK_ENDPOINT_STORAGE_KEY, normalized);
-  setFeedbackStatus('Feedback endpoint saved.');
+  updateAdminDashboardLink(normalized);
+  setFeedbackStatus('Feedback endpoint saved. Admin dashboard link ready.');
 }
 
 async function loadTranscriptPhraseGroups(): Promise<void> {

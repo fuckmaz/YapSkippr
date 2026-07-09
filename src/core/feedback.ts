@@ -64,3 +64,12 @@ export function normalizeFeedbackEndpoint(value: string): string | null {
     return null;
   }
 }
+
+export function deriveAdminDashboardUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = normalizeFeedbackEndpoint(value);
+  if (!normalized) return null;
+
+  const endpoint = new URL(normalized);
+  return new URL('/admin', endpoint.origin).toString();
+}
