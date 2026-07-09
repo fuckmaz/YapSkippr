@@ -18,6 +18,15 @@ test('summarizes QR raw evidence with decoded value and box location', () => {
   })).toBe('https://brand.example/qr (QR box 10,20 48x50)');
 });
 
+test('summarizes progress-bar raw evidence with frame coordinates', () => {
+  expect(summarizeRawEvidence({
+    y: 29,
+    startX: 10,
+    endX: 69,
+    rows: 3
+  })).toBe('Progress bar x=10-69 y=29 rows=3');
+});
+
 test('falls back to OCR text-like fields', () => {
   expect(summarizeRawEvidence({ contextText: 'Sponsored by Brand' })).toBe('Sponsored by Brand');
 });

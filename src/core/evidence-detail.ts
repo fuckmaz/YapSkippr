@@ -10,6 +10,9 @@ export function summarizeRawEvidence(raw: unknown): string | null {
     return appendQrLocation(raw.value.trim(), raw.location);
   }
 
+  const progressBarDetail = formatProgressBarDetail(raw);
+  if (progressBarDetail) return progressBarDetail;
+
   if (typeof raw.text === 'string' && raw.text.trim()) return raw.text.trim();
   if (typeof raw.contextText === 'string' && raw.contextText.trim()) return raw.contextText.trim();
   return null;
@@ -31,6 +34,20 @@ function formatQrBox(location: unknown): string | null {
   const width = Math.max(0, Math.round(bottomRight.x - topLeft.x));
   const height = Math.max(0, Math.round(bottomRight.y - topLeft.y));
   return `QR box ${x},${y} ${width}x${height}`;
+}
+
+function formatProgressBarDetail(raw: Record<string, unknown>): string | null {
+  const y = finiteNumber(raw.y);
+  const startX = finiteNumber(raw.startX);
+  const endX = finiteNumber(raw.endX);
+  const rows = finiteNumber(raw.rows);
+  if (y === null || startX === null || endX === null || rows === null) return null;
+
+  return `Progress bar x=${Math.round(startX)}-${Math.round(endX)} y=${Math.round(y)} rows=${Math.round(rows)}`;
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
 function getPoint(value: unknown): { x: number; y: number } | null {
