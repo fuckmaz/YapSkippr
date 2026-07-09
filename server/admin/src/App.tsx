@@ -797,6 +797,7 @@ function ModelsPage({
   const [sort, setSort] = useState('created-desc');
   const [selectedEvaluation, setSelectedEvaluation] = useState<{ model: ModelArtifact; evaluation: ModelEvaluation } | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const visibleModels = useMemo(() => {
     return models
       .filter((model) => matchesQuery(model, query))
@@ -810,9 +811,12 @@ function ModelsPage({
 
   async function inspect(model: ModelArtifact): Promise<void> {
     setBusyAction(`inspect:${model.modelId}`);
+    setActionError(null);
     try {
       const evaluation = await api<ModelEvaluation>(`/admin/models/${model.modelId}/evaluation`, token);
       setSelectedEvaluation({ model, evaluation });
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
     } finally {
       setBusyAction(null);
     }
@@ -820,9 +824,12 @@ function ModelsPage({
 
   async function promote(id: string): Promise<void> {
     setBusyAction(`promote:${id}`);
+    setActionError(null);
     try {
       await api(`/admin/models/${id}/promote`, token, { method: 'POST' });
       await onRefresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
     } finally {
       setBusyAction(null);
     }
@@ -830,9 +837,12 @@ function ModelsPage({
 
   async function rollback(id: string): Promise<void> {
     setBusyAction(`rollback:${id}`);
+    setActionError(null);
     try {
       await api(`/admin/models/${id}/rollback`, token, { method: 'POST' });
       await onRefresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
     } finally {
       setBusyAction(null);
     }
@@ -865,6 +875,7 @@ function ModelsPage({
           </select>
         </label>
       </div>
+      {actionError ? <div className="inline-alert"><XCircle size={16} /> {actionError}</div> : null}
       <DataTable columns={['Model', 'Version', 'Status', 'Accuracy', 'F1', 'AUC', 'Examples', 'Actions']} rows={visibleModels.map((model) => [
         <code>{model.modelId}</code>,
         model.modelVersion,

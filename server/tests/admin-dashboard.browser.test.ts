@@ -154,9 +154,29 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.getByText('Thresholds'));
     await expectVisible(page, page.locator('.model-detail-grid').getByText('positive', { exact: true }));
 
+    let failedPromoteIntercepted = false;
+    await page.route('**/admin/models/*/promote', async (route) => {
+      if (failedPromoteIntercepted) {
+        await route.continue();
+        return;
+      }
+      failedPromoteIntercepted = true;
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: false, error: 'Promotion service unavailable.' })
+      });
+    });
+    const failedPromoteResponse = page.waitForResponse((response) => response.url().includes('/admin/models/') && response.url().endsWith('/promote'));
+    await page.getByRole('button', { name: 'Promote' }).click();
+    expect((await failedPromoteResponse).status()).toBe(500);
+    await expectVisible(page, page.getByText('Promotion service unavailable.'));
+    await page.unroute('**/admin/models/*/promote');
+
     const promoteResponse = page.waitForResponse((response) => response.url().includes('/admin/models/') && response.url().endsWith('/promote'));
     await page.getByRole('button', { name: 'Promote' }).click();
     expect((await promoteResponse).status()).toBe(200);
+    expect(await page.getByText('Promotion service unavailable.').count()).toBe(0);
     await expectVisible(page, page.getByRole('cell', { name: 'Promoted' }));
     await expectVisible(page, page.getByRole('heading', { name: 'Promotion History' }));
     await expectVisible(page, page.locator('.promotion-history').getByText('promote'));
