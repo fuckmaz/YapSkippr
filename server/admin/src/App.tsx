@@ -645,6 +645,7 @@ function FeedbackTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
 function FeedbackDetailPanel({ item }: { item: FeedbackRecord }): JSX.Element {
   const features = Object.entries(item.payload.candidateFeatures ?? {}).sort(([a], [b]) => a.localeCompare(b));
   const evidence = item.payload.evidenceSnapshot ?? [];
+  const timecodeHref = buildTimecodeUrl(item.payload.videoUrl, item.payload.startSeconds);
 
   return (
     <Panel title="Feedback Details">
@@ -658,6 +659,11 @@ function FeedbackDetailPanel({ item }: { item: FeedbackRecord }): JSX.Element {
             <DetailRow label="Source" value={sourceLabel(feedbackSource(item))} />
             <DetailRow label="Received" value={timeAgo(item.receivedAt)} />
           </div>
+          {timecodeHref ? (
+            <a className="detail-link" href={timecodeHref} target="_blank" rel="noreferrer">
+              <Link size={14} /> Open at timecode
+            </a>
+          ) : null}
         </section>
         <section className="detail-section">
           <h3>Model metadata</h3>
@@ -1394,6 +1400,17 @@ function formatTime(seconds: number): string {
   const rounded = Math.max(0, Math.round(seconds));
   const minutes = Math.floor(rounded / 60);
   return `${minutes}:${String(rounded % 60).padStart(2, '0')}`;
+}
+
+function buildTimecodeUrl(videoUrl: string | null, seconds: number): string | null {
+  if (!videoUrl) return null;
+  try {
+    const url = new URL(videoUrl);
+    url.searchParams.set('t', `${Math.max(0, Math.round(seconds))}s`);
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 function formatPercent(value: number | undefined): string {

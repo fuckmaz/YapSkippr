@@ -914,6 +914,27 @@ nav em {
   white-space: nowrap;
 }
 
+.detail-link {
+  display: inline-flex;
+  justify-self: start;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.detail-link:hover {
+  border-color: var(--accent);
+  background: var(--surface-3);
+}
+
 .detail-evidence-row {
   display: grid;
   grid-template-columns: 112px 112px 96px minmax(0, 1fr);

@@ -94,6 +94,9 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.getByText('visibleLinkCount'));
     await expectVisible(page, page.getByText('Transcript context'));
     await expectVisible(page, page.getByText('This video is sponsored by Acme. Use code YAP.'));
+    const timecodeLink = page.getByRole('link', { name: 'Open at timecode' });
+    await expectVisible(page, timecodeLink);
+    expect(await timecodeLink.getAttribute('href')).toContain('t=42s');
     expect(await page.getByRole('cell', { name: 'video-a' }).count()).toBe(0);
     await page.getByLabel('Search feedback').fill('');
     await page.getByLabel('Feedback source filter').selectOption('frame-visible-link');
