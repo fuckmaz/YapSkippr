@@ -150,7 +150,7 @@ The server package lives in `server/` and provides:
 - `POST /api/v1/feedback` for extension feedback payload v2.
 - `GET /api/v1/model/latest` for the currently promoted model artifact.
 - Admin-only review, training, promotion, rollback, and evaluation routes.
-- A React/Vite admin dashboard at `/admin`, protected by a server-side admin session created from `ADMIN_TOKEN`.
+- A React/Vite admin dashboard at `/admin`; the dashboard HTML and built `/admin/assets/*` files are protected by admin auth from `ADMIN_TOKEN`.
 - PostgreSQL persistence when `DATABASE_URL` is set, with an in-memory fallback for local development and tests.
 
 Local development:

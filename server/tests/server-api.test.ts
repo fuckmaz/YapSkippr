@@ -3,6 +3,9 @@ import { buildServer, resolveAdminToken } from '../src/app';
 import type { CandidateModelArtifact } from '../src/model/types';
 import { createMemoryRepository } from '../src/store/memory';
 import { feedbackFixture } from './fixtures';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 describe('YapSkippr server API', () => {
   test('refuses to start in production without an explicit admin token', async () => {
@@ -193,6 +196,73 @@ describe('YapSkippr server API', () => {
     expect(dashboardWithCookie.body).not.toContain('Admin access required');
 
     await app.close();
+  });
+
+  test('protects built admin dashboard assets with admin auth', async () => {
+    const originalCwd = process.cwd();
+    const tempCwd = mkdtempSync(path.join(tmpdir(), 'yapskippr-admin-assets-'));
+    const adminDist = path.join(tempCwd, 'dist/admin');
+    const adminAssets = path.join(adminDist, 'assets');
+    mkdirSync(adminAssets, { recursive: true });
+    writeFileSync(
+      path.join(adminDist, 'index.html'),
+      '<!doctype html><html><head><script type="module" src="/admin/assets/app.js"></script></head><body><div id="root">React admin</div></body></html>'
+    );
+    writeFileSync(path.join(adminAssets, 'app.js'), 'globalThis.yapskipprAdmin = true;\n');
+
+    let app: Awaited<ReturnType<typeof buildServer>> | undefined;
+    try {
+      process.chdir(tempCwd);
+      app = await buildServer({ adminToken: 'secret' });
+
+      const unauthenticatedDashboard = await app.inject({ method: 'GET', url: '/admin' });
+      expect(unauthenticatedDashboard.statusCode).toBe(200);
+      expect(unauthenticatedDashboard.body).toContain('Admin access required');
+      expect(unauthenticatedDashboard.body).not.toContain('/admin/assets/');
+
+      const unauthenticatedAsset = await app.inject({ method: 'GET', url: '/admin/assets/app.js' });
+      expect(unauthenticatedAsset.statusCode).toBe(404);
+      expect(unauthenticatedAsset.body).not.toContain('yapskipprAdmin');
+
+      const tokenAsset = await app.inject({
+        method: 'GET',
+        url: '/admin/assets/app.js',
+        headers: { 'x-admin-token': 'secret' }
+      });
+      expect(tokenAsset.statusCode).toBe(200);
+      expect(tokenAsset.body).toBe('globalThis.yapskipprAdmin = true;\n');
+
+      const acceptedSession = await app.inject({
+        method: 'POST',
+        url: '/admin/session',
+        payload: { token: 'secret' }
+      });
+      expect(acceptedSession.statusCode).toBe(200);
+      const cookie = acceptedSession.headers['set-cookie'];
+      const session = Array.isArray(cookie) ? cookie[0] : cookie;
+      expect(session).toEqual(expect.stringContaining('yapskippr_admin='));
+
+      const cookieAsset = await app.inject({
+        method: 'GET',
+        url: '/admin/assets/app.js',
+        headers: { cookie: session }
+      });
+      expect(cookieAsset.statusCode).toBe(200);
+      expect(cookieAsset.body).toBe('globalThis.yapskipprAdmin = true;\n');
+
+      const dashboardWithCookie = await app.inject({
+        method: 'GET',
+        url: '/admin',
+        headers: { cookie: session }
+      });
+      expect(dashboardWithCookie.statusCode).toBe(200);
+      expect(dashboardWithCookie.body).toContain('/admin/assets/app.js');
+      expect(dashboardWithCookie.body).not.toContain('Admin access required');
+    } finally {
+      await app?.close();
+      process.chdir(originalCwd);
+      rmSync(tempCwd, { recursive: true, force: true });
+    }
   });
 
   test('marks admin session cookies secure in production', async () => {

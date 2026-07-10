@@ -63,7 +63,8 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   if (existsSync(adminAssets)) {
     await app.register(fastifyStatic, {
       root: adminAssets,
-      prefix: '/admin/assets/'
+      prefix: '/admin/assets/',
+      allowedPath: (_pathName, _root, request) => isAdminRequest(request, adminToken)
     });
   }
 
