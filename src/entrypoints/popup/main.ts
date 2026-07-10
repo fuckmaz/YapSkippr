@@ -10,9 +10,11 @@ import {
   parseTranscriptPhraseGroupsJson
 } from '../../core/analysis/transcript-analyzer';
 import {
+  OCCURRENCE_FEEDBACK_ACTIONS,
   createOccurrenceFeedbackPayload,
   deriveAdminDashboardUrl,
   normalizeFeedbackEndpoint,
+  type OccurrenceFeedbackAction,
   type OccurrenceFeedbackValue,
   type OccurrenceFeedbackType
 } from '../../core/feedback';
@@ -549,16 +551,11 @@ function createFeedbackButtons(input: {
   summary: string;
   reason?: string;
 }): HTMLButtonElement[] {
-  return [
-    createFeedbackButton('accurate', 'Good', input),
-    createFeedbackButton('false_positive', 'Wrong', input),
-    createFeedbackButton('wrong_timing', 'Timing', input)
-  ];
+  return OCCURRENCE_FEEDBACK_ACTIONS.map((action) => createFeedbackButton(action, input));
 }
 
 function createFeedbackButton(
-  feedback: OccurrenceFeedbackValue,
-  label: string,
+  action: OccurrenceFeedbackAction,
   input: {
     occurrenceId: string;
     occurrenceType: OccurrenceFeedbackType;
@@ -571,8 +568,10 @@ function createFeedbackButton(
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'feedback-action';
-  button.textContent = label;
-  button.dataset.feedback = feedback;
+  button.textContent = action.label;
+  button.title = action.title;
+  button.setAttribute('aria-label', `${action.label} - ${action.title}`);
+  button.dataset.feedback = action.value;
   button.dataset.occurrenceId = input.occurrenceId;
   button.dataset.occurrenceType = input.occurrenceType;
   button.dataset.startSeconds = String(input.startSeconds);

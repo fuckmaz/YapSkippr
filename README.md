@@ -39,7 +39,7 @@ When evidence is found, YapSkippr fuses the signals into candidate segments and 
 ## Current Experience
 
 - Live popup dashboard with scan phase, sampled frame count, video timing, evidence counts, candidate segments, and recent activity.
-- Basic and detailed popup modes. Detailed mode shows raw evidence history, source-specific activity, and feedback controls.
+- Basic and detailed popup modes. Detailed mode shows raw evidence history, source-specific activity, and feedback controls for correct, wrong, wrong timing, and missing context reports.
 - Fast pre-scan mode that keeps analyzing the current YouTube tab every 1-5 seconds after the popup closes.
 - Candidate jump actions for quickly seeking to detected segment start times.
 - Lightweight status block mounted near the YouTube player with evidence counts and clickable candidate timecodes.

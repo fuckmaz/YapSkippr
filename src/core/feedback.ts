@@ -1,7 +1,22 @@
 import type { EvidenceKind, EvidenceSource } from './types';
 
-export type OccurrenceFeedbackValue = 'accurate' | 'false_positive' | 'wrong_timing' | 'missed_context';
+export const OCCURRENCE_FEEDBACK_VALUES = ['accurate', 'false_positive', 'wrong_timing', 'missed_context'] as const;
+
+export type OccurrenceFeedbackValue = (typeof OCCURRENCE_FEEDBACK_VALUES)[number];
 export type OccurrenceFeedbackType = 'candidate' | 'evidence';
+
+export interface OccurrenceFeedbackAction {
+  readonly value: OccurrenceFeedbackValue;
+  readonly label: string;
+  readonly title: string;
+}
+
+export const OCCURRENCE_FEEDBACK_ACTIONS = [
+  { value: 'accurate', label: 'Good', title: 'Correct detection' },
+  { value: 'false_positive', label: 'Wrong', title: 'Wrong detection' },
+  { value: 'wrong_timing', label: 'Timing', title: 'Wrong timing' },
+  { value: 'missed_context', label: 'Context', title: 'Missing context' }
+] as const satisfies readonly OccurrenceFeedbackAction[];
 
 export interface OccurrenceFeedbackEvidenceSnapshot {
   source: EvidenceSource | string;

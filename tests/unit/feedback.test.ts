@@ -1,4 +1,20 @@
-import { createOccurrenceFeedbackPayload, deriveAdminDashboardUrl } from '../../src/core/feedback';
+import {
+  OCCURRENCE_FEEDBACK_ACTIONS,
+  OCCURRENCE_FEEDBACK_VALUES,
+  createOccurrenceFeedbackPayload,
+  deriveAdminDashboardUrl
+} from '../../src/core/feedback';
+
+test('defines popup feedback actions for every supported occurrence feedback value', () => {
+  expect(OCCURRENCE_FEEDBACK_ACTIONS.map((action) => action.value)).toEqual(OCCURRENCE_FEEDBACK_VALUES);
+  expect(new Set(OCCURRENCE_FEEDBACK_ACTIONS.map((action) => action.value)).size).toBe(OCCURRENCE_FEEDBACK_VALUES.length);
+  expect(OCCURRENCE_FEEDBACK_ACTIONS).toEqual([
+    { value: 'accurate', label: 'Good', title: 'Correct detection' },
+    { value: 'false_positive', label: 'Wrong', title: 'Wrong detection' },
+    { value: 'wrong_timing', label: 'Timing', title: 'Wrong timing' },
+    { value: 'missed_context', label: 'Context', title: 'Missing context' }
+  ]);
+});
 
 test('creates a server feedback payload for a detected occurrence', () => {
   expect(
@@ -75,6 +91,30 @@ test('creates a server feedback payload for a detected occurrence', () => {
     ],
     transcriptContext: 'Before the segment. The ad read starts here. After the segment.',
     createdAt: '1970-01-01T00:00:01.000Z'
+  });
+});
+
+test('creates a v2 payload for missed context feedback', () => {
+  expect(
+    createOccurrenceFeedbackPayload(
+      {
+        videoUrl: 'https://www.youtube.com/watch?v=abc123',
+        videoId: 'abc123',
+        occurrenceId: 'candidate-120',
+        occurrenceType: 'candidate',
+        startSeconds: 120,
+        summary: 'Candidate segment at 2:00',
+        feedback: 'missed_context'
+      },
+      2_000
+    )
+  ).toMatchObject({
+    app: 'YapSkippr',
+    version: 2,
+    occurrenceId: 'candidate-120',
+    occurrenceType: 'candidate',
+    feedback: 'missed_context',
+    createdAt: '1970-01-01T00:00:02.000Z'
   });
 });
 
