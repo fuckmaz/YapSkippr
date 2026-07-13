@@ -30,6 +30,7 @@ import {
   XCircle,
   type LucideIcon
 } from 'lucide-react';
+import type { ReactElement, ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Page = 'overview' | 'review' | 'feedback' | 'videos' | 'models' | 'training';
@@ -67,6 +68,7 @@ interface FeedbackRecord {
     summary: string;
     reason?: string;
     feedback: string;
+    notes?: string;
     heuristicConfidence?: number;
     modelConfidence?: number;
     modelId?: string | null;
@@ -233,7 +235,7 @@ const navigation = [
   { page: 'training' as const, label: 'Training', icon: TrainTrack }
 ];
 
-export function App(): JSX.Element {
+export function App(): ReactElement {
   const [page, setPage] = useState<Page>('overview');
   const [token, setToken] = useState(() => localStorage.getItem('yapskippr.adminToken') ?? '');
   const [sessionAuthenticated, setSessionAuthenticated] = useState(false);
@@ -392,7 +394,7 @@ function GlobalSearchResults({
   query: string;
   results: GlobalSearchResult[];
   onOpen: (page: Page) => void;
-}): JSX.Element {
+}): ReactElement {
   return (
     <section className="global-search-panel" aria-live="polite">
       <div className="global-search-head">
@@ -432,7 +434,7 @@ function GlobalSearchResults({
   );
 }
 
-function Overview({ data, onPageChange }: { data: DashboardData; onPageChange: (page: Page) => void }): JSX.Element {
+function Overview({ data, onPageChange }: { data: DashboardData; onPageChange: (page: Page) => void }): ReactElement {
   const summary = data.summary;
   const sourceRows = Object.entries(summary?.detectorSourceDistribution ?? {});
   const labelRows = Object.entries(summary?.feedbackLabelDistribution ?? {});
@@ -498,7 +500,7 @@ function Overview({ data, onPageChange }: { data: DashboardData; onPageChange: (
   );
 }
 
-function DetectorQualityList({ rows }: { rows: DetectorQualityRow[] }): JSX.Element {
+function DetectorQualityList({ rows }: { rows: DetectorQualityRow[] }): ReactElement {
   if (rows.length === 0) return <EmptyState title="No detector reviews yet" detail="Reviewed feedback will populate source quality metrics." />;
 
   return (
@@ -515,7 +517,7 @@ function DetectorQualityList({ rows }: { rows: DetectorQualityRow[] }): JSX.Elem
   );
 }
 
-function TrainingDatasetSummary({ readiness }: { readiness: TrainingReadiness | null }): JSX.Element {
+function TrainingDatasetSummary({ readiness }: { readiness: TrainingReadiness | null }): ReactElement {
   if (!readiness) return <EmptyState title="No training dataset data" detail="Refresh after feedback has been reviewed." />;
 
   return (
@@ -537,7 +539,7 @@ function TrainingDatasetSummary({ readiness }: { readiness: TrainingReadiness | 
   );
 }
 
-function ReviewQueue({ token, data, onRefresh }: { token: string; data: DashboardData; onRefresh: () => Promise<void> }): JSX.Element {
+function ReviewQueue({ token, data, onRefresh }: { token: string; data: DashboardData; onRefresh: () => Promise<void> }): ReactElement {
   const [selectedSource, setSelectedSource] = useState('all');
   const [busyLabel, setBusyLabel] = useState<ReviewLabel | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
@@ -685,7 +687,7 @@ function isEditableShortcutTarget(target: EventTarget | null): boolean {
   return target.isContentEditable || tagName === 'input' || tagName === 'textarea' || tagName === 'select';
 }
 
-function FeedbackTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
+function FeedbackTable({ items }: { items: FeedbackRecord[] }): ReactElement {
   const [query, setQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [reviewFilter, setReviewFilter] = useState('all');
@@ -763,7 +765,7 @@ function FeedbackTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
   );
 }
 
-function FeedbackDetailPanel({ item }: { item: FeedbackRecord }): JSX.Element {
+function FeedbackDetailPanel({ item }: { item: FeedbackRecord }): ReactElement {
   const features = Object.entries(item.payload.candidateFeatures ?? {}).sort(([a], [b]) => a.localeCompare(b));
   const evidence = item.payload.evidenceSnapshot ?? [];
   const timecodeHref = buildTimecodeUrl(item.payload.videoUrl, item.payload.startSeconds);
@@ -840,7 +842,7 @@ function FeedbackDetailPanel({ item }: { item: FeedbackRecord }): JSX.Element {
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string | number }): JSX.Element {
+function DetailRow({ label, value }: { label: string; value: string | number }): ReactElement {
   return (
     <div>
       <span>{label}</span>
@@ -849,7 +851,7 @@ function DetailRow({ label, value }: { label: string; value: string | number }):
   );
 }
 
-function VideosTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
+function VideosTable({ items }: { items: FeedbackRecord[] }): ReactElement {
   const [query, setQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [sort, setSort] = useState('feedback-desc');
@@ -915,7 +917,7 @@ function ModelsPage({
   promoted: ModelArtifact | null;
   history: PromotionRecord[];
   onRefresh: () => Promise<void>;
-}): JSX.Element {
+}): ReactElement {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [sort, setSort] = useState('created-desc');
@@ -1042,7 +1044,7 @@ function ModelsPage({
   );
 }
 
-function ModelEvaluationPanel({ model, evaluation }: { model: ModelArtifact; evaluation: ModelEvaluation }): JSX.Element {
+function ModelEvaluationPanel({ model, evaluation }: { model: ModelArtifact; evaluation: ModelEvaluation }): ReactElement {
   const weights = Object.entries(model.weights)
     .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
     .slice(0, 10);
@@ -1132,7 +1134,7 @@ function TrainingPage({
   trainingDataset: TrainingDatasetRow[];
   promoted: ModelArtifact | null;
   onRefresh: () => Promise<void>;
-}): JSX.Element {
+}): ReactElement {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [datasetQuery, setDatasetQuery] = useState('');
@@ -1311,7 +1313,7 @@ function TrainingRunDetailPanel({
   run: TrainingRun;
   model: ModelArtifact | null;
   promoted: ModelArtifact | null;
-}): JSX.Element {
+}): ReactElement {
   const summary = model?.trainingSetSummary ?? {};
   const comparison = promoted ? Object.entries(run.metrics).sort(([a], [b]) => a.localeCompare(b)) : [];
 
@@ -1363,7 +1365,7 @@ function TrainingRunDetailPanel({
   );
 }
 
-function TrainingDatasetDetailPanel({ row, feedback }: { row: TrainingDatasetRow; feedback: FeedbackRecord | null }): JSX.Element {
+function TrainingDatasetDetailPanel({ row, feedback }: { row: TrainingDatasetRow; feedback: FeedbackRecord | null }): ReactElement {
   const payload = feedback?.payload ?? null;
   const features = Object.entries(payload?.candidateFeatures ?? {}).sort(([a], [b]) => a.localeCompare(b));
   const evidence = payload?.evidenceSnapshot ?? [];
@@ -1445,7 +1447,7 @@ function TrainingDatasetDetailPanel({ row, feedback }: { row: TrainingDatasetRow
   );
 }
 
-function TrainingReadinessPanel({ readiness }: { readiness: TrainingReadiness | null }): JSX.Element {
+function TrainingReadinessPanel({ readiness }: { readiness: TrainingReadiness | null }): ReactElement {
   if (!readiness) {
     return (
       <Panel title="Training Readiness">
@@ -1648,7 +1650,7 @@ function compareTrainingDatasetRows(
   return dateValue(b.receivedAt) - dateValue(a.receivedAt);
 }
 
-function PageTitle({ title, description }: { title: string; description: string }): JSX.Element {
+function PageTitle({ title, description }: { title: string; description: string }): ReactElement {
   return (
     <div className="page-title">
       <h1>{title}</h1>
@@ -1657,7 +1659,7 @@ function PageTitle({ title, description }: { title: string; description: string 
   );
 }
 
-function MetricCard({ icon: Icon, label, value, detail, accent }: { icon: typeof Database; label: string; value: number; detail: string; accent: string }): JSX.Element {
+function MetricCard({ icon: Icon, label, value, detail, accent }: { icon: typeof Database; label: string; value: number; detail: string; accent: string }): ReactElement {
   return (
     <article className="metric-card" data-accent={accent}>
       <Icon size={22} />
@@ -1668,7 +1670,7 @@ function MetricCard({ icon: Icon, label, value, detail, accent }: { icon: typeof
   );
 }
 
-function Panel({ title, action, children }: { title: string; action?: string; children: React.ReactNode }): JSX.Element {
+function Panel({ title, action, children }: { title: string; action?: string; children: ReactNode }): ReactElement {
   return (
     <section className="panel">
       <div className="panel-head">
@@ -1680,7 +1682,7 @@ function Panel({ title, action, children }: { title: string; action?: string; ch
   );
 }
 
-function LineGraph({ rows }: { rows: Array<{ date: string; reviewed: number }> }): JSX.Element {
+function LineGraph({ rows }: { rows: Array<{ date: string; reviewed: number }> }): ReactElement {
   const rawValues = rows.length ? rows.map((row) => row.reviewed) : [0, 1, 0, 2, 1, 3, 2];
   const values = rawValues.length === 1 ? [0, rawValues[0] ?? 0, rawValues[0] ?? 0] : rawValues;
   const max = Math.max(...values, 1);
@@ -1699,11 +1701,12 @@ function LineGraph({ rows }: { rows: Array<{ date: string; reviewed: number }> }
   );
 }
 
-function BarList({ rows }: { rows: Array<[string, number]> }): JSX.Element {
+function BarList({ rows }: { rows: Array<[string, number]> }): ReactElement {
   const max = Math.max(...rows.map(([, value]) => value), 1);
+  const visibleRows: Array<[string, number]> = rows.length ? rows : [['No data', 0]];
   return (
     <div className="bar-list">
-      {(rows.length ? rows : [['No data', 0]]).map(([label, value]) => (
+      {visibleRows.map(([label, value]) => (
         <div key={label} className="bar-row">
           <span>{label}</span>
           <div><i style={{ width: `${(value / max) * 100}%` }} /></div>
@@ -1714,12 +1717,13 @@ function BarList({ rows }: { rows: Array<[string, number]> }): JSX.Element {
   );
 }
 
-function Donut({ rows, total }: { rows: Array<[string, number]>; total: number }): JSX.Element {
+function Donut({ rows, total }: { rows: Array<[string, number]>; total: number }): ReactElement {
+  const visibleRows: Array<[string, number]> = rows.length ? rows : [['pending', 0]];
   return (
     <div className="donut-wrap">
       <div className="donut" />
       <div className="label-list">
-        {(rows.length ? rows : [['pending', 0]]).map(([label, value]) => (
+        {visibleRows.map(([label, value]) => (
           <span key={label}><LabelBadge label={label} /> {total ? Math.round((value / total) * 100) : 0}%</span>
         ))}
       </div>
@@ -1727,7 +1731,7 @@ function Donut({ rows, total }: { rows: Array<[string, number]>; total: number }
   );
 }
 
-function MetricStrip({ metrics }: { metrics: Record<string, number> }): JSX.Element {
+function MetricStrip({ metrics }: { metrics: Record<string, number> }): ReactElement {
   const keys = ['accuracy', 'precision', 'recall', 'f1', 'auc'];
   return (
     <div className="metric-strip">
@@ -1749,7 +1753,7 @@ function ReviewButton({
   action: ReviewAction;
   busy: ReviewLabel | null;
   onSubmit: (value: ReviewLabel) => Promise<void>;
-}): JSX.Element {
+}): ReactElement {
   const Icon = action.icon;
   return (
     <button type="button" aria-keyshortcuts={action.shortcut} onClick={() => void onSubmit(action.value)} disabled={busy !== null}>
@@ -1759,7 +1763,7 @@ function ReviewButton({
   );
 }
 
-function DataTable({ columns, rows }: { columns: string[]; rows: Array<Array<React.ReactNode>> }): JSX.Element {
+function DataTable({ columns, rows }: { columns: string[]; rows: Array<Array<ReactNode>> }): ReactElement {
   return (
     <div className="table-wrap">
       <table>
@@ -1776,11 +1780,11 @@ function DataTable({ columns, rows }: { columns: string[]; rows: Array<Array<Rea
   );
 }
 
-function LabelBadge({ label }: { label: string }): JSX.Element {
+function LabelBadge({ label }: { label: string }): ReactElement {
   return <span className="label-badge" data-label={label}>{label.replace(/_/g, ' ')}</span>;
 }
 
-function EmptyState({ title, detail }: { title: string; detail: string }): JSX.Element {
+function EmptyState({ title, detail }: { title: string; detail: string }): ReactElement {
   return (
     <div className="empty-state">
       <Box size={22} />
@@ -1790,7 +1794,7 @@ function EmptyState({ title, detail }: { title: string; detail: string }): JSX.E
   );
 }
 
-function ThemeSwitch({ value, onChange }: { value: ThemePreference; onChange: (value: ThemePreference) => void }): JSX.Element {
+function ThemeSwitch({ value, onChange }: { value: ThemePreference; onChange: (value: ThemePreference) => void }): ReactElement {
   const next = value === 'system' ? 'dark' : value === 'dark' ? 'light' : 'system';
   const Icon = value === 'light' ? Sun : value === 'dark' ? Moon : Gauge;
   return (
@@ -1801,7 +1805,7 @@ function ThemeSwitch({ value, onChange }: { value: ThemePreference; onChange: (v
   );
 }
 
-function LoginPanel({ onSave }: { onSave: (token: string) => Promise<void> }): JSX.Element {
+function LoginPanel({ onSave }: { onSave: (token: string) => Promise<void> }): ReactElement {
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

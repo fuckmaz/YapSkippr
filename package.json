@@ -18,6 +18,7 @@
     "test:dashboard": "npm --prefix server run test:dashboard",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "typecheck:admin": "npm --prefix server run typecheck:admin",
     "typecheck:server": "npm --prefix server run typecheck",
     "server:dev": "npm --prefix server run dev",
     "server:migrate": "npm --prefix server run migrate",

@@ -128,6 +128,7 @@ npm run typecheck
 npm run test:e2e
 npm run test:server
 npm run test:dashboard
+npm run typecheck:admin
 npm run typecheck:server
 ```
 
