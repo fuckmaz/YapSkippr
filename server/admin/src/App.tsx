@@ -194,6 +194,7 @@ interface VideoSummaryRow {
   videoId: string;
   url: string | null;
   feedback: number;
+  clients: Set<string>;
   pending: number;
   reviewed: number;
   sources: Set<string>;
@@ -853,7 +854,7 @@ function VideosTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
   const sources = useMemo(() => uniqueSources(items), [items]);
   const videos = useMemo(() => {
     return summarizeVideos(items)
-      .filter((video) => matchesQuery({ videoId: video.videoId, url: video.url, sources: [...video.sources] }, query))
+      .filter((video) => matchesQuery({ videoId: video.videoId, url: video.url, clients: [...video.clients], sources: [...video.sources] }, query))
       .filter((video) => sourceFilter === 'all' || video.sources.has(sourceFilter))
       .sort((a, b) => compareVideos(a, b, sort));
   }, [items, query, sort, sourceFilter]);
@@ -861,6 +862,7 @@ function VideosTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
   const videoRows = videos.map((video) => [
     video.videoId,
     video.feedback,
+    video.clients.size,
     video.pending,
     video.reviewed,
     [...video.sources].map(sourceLabel).join(', '),
@@ -894,7 +896,7 @@ function VideosTable({ items }: { items: FeedbackRecord[] }): JSX.Element {
           </select>
         </label>
       </div>
-      <DataTable columns={['Video ID', 'Feedback', 'Pending', 'Reviewed', 'Sources', 'Latest', 'URL']} rows={videoRows} />
+      <DataTable columns={['Video ID', 'Feedback', 'Clients', 'Pending', 'Reviewed', 'Sources', 'Latest', 'URL']} rows={videoRows} />
     </section>
   );
 }
@@ -1507,12 +1509,14 @@ function summarizeVideos(items: readonly FeedbackRecord[]): VideoSummaryRow[] {
       videoId: id,
       url: item.payload.videoUrl,
       feedback: 0,
+      clients: new Set<string>(),
       pending: 0,
       reviewed: 0,
       sources: new Set<string>(),
       latestReceivedAt: item.receivedAt
     };
     entry.feedback += 1;
+    if (item.payload.clientId) entry.clients.add(item.payload.clientId);
     if (!item.review) entry.pending += 1;
     else entry.reviewed += 1;
     entry.sources.add(feedbackSource(item));
@@ -1531,6 +1535,7 @@ function buildGlobalSearchResults(data: DashboardData, query: string): GlobalSea
       id: item.id,
       videoId: item.payload.videoId,
       videoUrl: item.payload.videoUrl,
+      clientId: item.payload.clientId,
       occurrenceId: item.payload.occurrenceId,
       source: item.payload.source,
       summary: item.payload.summary,
@@ -1546,20 +1551,20 @@ function buildGlobalSearchResults(data: DashboardData, query: string): GlobalSea
       page: 'feedback',
       category: 'Feedback',
       title: item.payload.occurrenceId,
-      meta: item.payload.videoId ?? 'unknown video',
+      meta: [item.payload.videoId ?? 'unknown video', item.payload.clientId].filter(Boolean).join(' · '),
       detail: `${sourceLabel(feedbackSource(item))} · ${formatTime(item.payload.startSeconds)} · ${item.payload.summary}`,
       icon: Table2
     }));
 
   const videoResults = summarizeVideos(data.feedback)
-    .filter((video) => matchesQuery({ videoId: video.videoId, url: video.url, sources: [...video.sources] }, normalized))
+    .filter((video) => matchesQuery({ videoId: video.videoId, url: video.url, clients: [...video.clients], sources: [...video.sources] }, normalized))
     .slice(0, 4)
     .map((video): GlobalSearchResult => ({
       id: `video:${video.videoId}`,
       page: 'videos',
       category: 'Video',
       title: video.videoId,
-      meta: `${video.feedback} feedback · ${video.pending} pending`,
+      meta: `${video.feedback} feedback · ${video.clients.size} clients · ${video.pending} pending`,
       detail: [...video.sources].map(sourceLabel).join(', ') || 'No sources recorded',
       icon: Film
     }));

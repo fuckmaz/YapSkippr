@@ -30,6 +30,45 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await app?.close();
   });
 
+  test('finds anonymous client IDs in dashboard search and video summaries', async () => {
+    const clientApp = await buildServer({ adminToken: 'secret' });
+    await clientApp.listen({ host: '127.0.0.1', port: 0 });
+    const address = clientApp.server.address();
+    if (!address || typeof address === 'string') throw new Error('Could not bind client search test server.');
+    const clientBaseUrl = `http://127.0.0.1:${address.port}`;
+    await seedFeedback(clientApp, 'client-primary', 'video-client', 'frame-visible-link', {}, 'client_distinct_a');
+    await seedFeedback(clientApp, 'client-duplicate', 'video-client', 'transcript', {}, 'client_distinct_a');
+    await seedFeedback(clientApp, 'client-second', 'video-client', 'frame-qr-code', {}, 'client_distinct_b');
+    await seedFeedback(clientApp, 'other-video', 'video-other', 'transcript', {}, 'client_other');
+
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    try {
+      await page.goto(`${clientBaseUrl}/admin`);
+
+      await page.getByPlaceholder('Admin token').fill('secret');
+      await page.getByRole('button', { name: 'Unlock dashboard' }).click();
+
+      await expectVisible(page, page.getByRole('heading', { name: 'Overview' }));
+      await page.getByLabel('Search dashboard').fill('client_distinct_b');
+      await expectVisible(page, page.getByRole('button', { name: 'Open feedback client-second' }));
+      await expectVisible(page, page.getByRole('button', { name: 'Open video video-client' }));
+      await expectVisible(page, page.getByText('Video · 3 feedback · 2 clients · 3 pending').first());
+
+      await page.getByLabel('Search dashboard').fill('');
+      await page.getByRole('button', { name: 'Videos' }).click();
+      await expectVisible(page, page.getByRole('columnheader', { name: 'Clients' }));
+      await page.getByLabel('Search videos').fill('client_distinct_b');
+      await expectVisible(page, page.getByRole('cell', { name: 'video-client' }));
+      expect(await page.getByRole('cell', { name: 'video-other' }).count()).toBe(0);
+
+      const videoClientRow = page.locator('tbody tr').filter({ has: page.getByRole('cell', { name: 'video-client' }) });
+      expect((await videoClientRow.locator('td').nth(2).innerText()).trim()).toBe('2');
+    } finally {
+      await page.close();
+      await clientApp.close();
+    }
+  }, 30_000);
+
   test('logs in, renders overview metrics, explores data, trains a model, and advances review queue', async () => {
     const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
     await page.goto(`${baseUrl}/admin`);
@@ -242,9 +281,11 @@ async function seedFeedback(
   occurrenceId: string,
   videoId: string,
   source: string,
-  featureOverrides: Record<string, number> = {}
+  featureOverrides: Record<string, number> = {},
+  clientId = `client_${occurrenceId}`
 ): Promise<void> {
   const payload = feedbackFixture({
+    clientId,
     occurrenceId,
     videoId,
     source,
