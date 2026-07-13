@@ -543,10 +543,13 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
   const [selectedSource, setSelectedSource] = useState('all');
   const [busyLabel, setBusyLabel] = useState<ReviewLabel | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const submittingReviewRef = useRef(false);
   const sources = useMemo(() => uniqueSources(data.feedback), [data.feedback]);
   const pending = data.feedback.filter((item) => !item.review && (selectedSource === 'all' || feedbackSource(item) === selectedSource));
   const current = pending[0];
+  const currentEvidence = current?.payload.evidenceSnapshot ?? [];
+  const currentTimecodeHref = current ? buildTimecodeUrl(current.payload.videoUrl, current.payload.startSeconds) : null;
   const recent = data.feedback.filter((item) => item.review).slice(0, 5);
 
   async function submit(label: ReviewLabel): Promise<void> {
@@ -554,6 +557,7 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
     if (submittingReviewRef.current) return;
     submittingReviewRef.current = true;
     setBusyLabel(label);
+    setReviewError(null);
     try {
       const notes = reviewNotes.trim();
       await api(`/admin/feedback/${current.id}/review`, token, {
@@ -565,6 +569,8 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
       });
       await onRefresh();
       setReviewNotes('');
+    } catch (error) {
+      setReviewError(error instanceof Error ? error.message : String(error));
     } finally {
       submittingReviewRef.current = false;
       setBusyLabel(null);
@@ -574,6 +580,10 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
   useEffect(() => {
     setReviewNotes('');
   }, [current?.id]);
+
+  useEffect(() => {
+    setReviewError(null);
+  }, [current?.id, selectedSource]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent): void {
@@ -604,21 +614,39 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
                 <a href={current.payload.videoUrl ?? '#'} target="_blank" rel="noreferrer">Open video <Link size={15} /></a>
               </div>
               <dl className="review-facts">
-                <div><dt>Timecode</dt><dd>{formatTime(current.payload.startSeconds)}</dd></div>
+                <div><dt>Occurrence</dt><dd>{current.payload.occurrenceId}</dd></div>
+                <div><dt>Video</dt><dd>{current.payload.videoId ?? 'unknown'}</dd></div>
+                <div><dt>Client</dt><dd>{current.payload.clientId ?? 'anonymous'}</dd></div>
+                <div>
+                  <dt>Timecode</dt>
+                  <dd>
+                    {currentTimecodeHref ? (
+                      <a href={currentTimecodeHref} target="_blank" rel="noreferrer" aria-label="Open review item at timecode">
+                        {formatTime(current.payload.startSeconds)} <Link size={14} />
+                      </a>
+                    ) : formatTime(current.payload.startSeconds)}
+                  </dd>
+                </div>
                 <div><dt>Heuristic</dt><dd>{formatPercent(current.payload.heuristicConfidence)}</dd></div>
-                <div><dt>Model</dt><dd>{formatPercent(current.payload.modelConfidence)}</dd></div>
+                <div><dt>Model confidence</dt><dd>{formatPercent(current.payload.modelConfidence)}</dd></div>
+                <div><dt>Model source</dt><dd>{current.payload.modelSource ?? 'fallback'}</dd></div>
+                <div><dt>Feature schema</dt><dd>{current.payload.featureSchemaVersion === undefined ? '-' : String(current.payload.featureSchemaVersion)}</dd></div>
                 <div><dt>Model version</dt><dd>{current.payload.modelVersion ?? 'fallback'}</dd></div>
               </dl>
               <section className="evidence-box">
                 <h3>Evidence</h3>
-                {(current.payload.evidenceSnapshot ?? []).map((evidence, index) => (
-                  <div key={`${evidence.source}-${index}`} className="evidence-row">
-                    <span>{evidence.source}</span>
-                    <strong>{evidence.kind}</strong>
-                    <em>{formatPercent(evidence.confidence)}</em>
-                    <p>{evidence.detail ?? evidence.reason}</p>
-                  </div>
-                ))}
+                {currentEvidence.length ? (
+                  currentEvidence.map((evidence, index) => (
+                    <div key={`${evidence.source}-${index}`} className="evidence-row">
+                      <span>{evidence.source}</span>
+                      <strong>{evidence.kind}</strong>
+                      <em>{formatPercent(evidence.confidence)}</em>
+                      <p>{evidence.detail ?? evidence.reason}</p>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyState title="No evidence snapshot" detail="This feedback payload did not include detector evidence." />
+                )}
               </section>
               <section className="transcript-box">
                 <h3>Transcript context</h3>
@@ -643,6 +671,7 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
                   placeholder="Optional review notes"
                 />
               </label>
+              {reviewError ? <div className="inline-alert" role="alert"><XCircle size={16} /> {reviewError}</div> : null}
               <div className="review-actions">
                 {reviewActions.map((action) => (
                   <ReviewButton key={action.value} action={action} busy={busyLabel} onSubmit={submit} />

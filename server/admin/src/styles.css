@@ -738,6 +738,13 @@ nav em {
 .review-facts dd {
   margin: 3px 0 0;
   font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.review-facts a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .evidence-box,

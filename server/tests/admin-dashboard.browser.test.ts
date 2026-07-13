@@ -114,6 +114,15 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.locator('.queue-number').getByText('1', { exact: true }));
     await page.getByLabel('Review queue source filter').selectOption('all');
     await expectVisible(page, page.locator('.queue-number').getByText('2', { exact: true }));
+    const reviewFacts = page.locator('.review-facts');
+    await expectVisible(page, reviewFacts.getByText('candidate-link', { exact: true }));
+    await expectVisible(page, reviewFacts.getByText('video-b', { exact: true }));
+    await expectVisible(page, reviewFacts.getByText('client_candidate-link', { exact: true }));
+    await expectVisible(page, reviewFacts.getByText('Model source'));
+    await expectVisible(page, reviewFacts.getByText('downloaded', { exact: true }));
+    const reviewTimecodeLink = page.getByRole('link', { name: 'Open review item at timecode' });
+    await expectVisible(page, reviewTimecodeLink);
+    expect(await reviewTimecodeLink.getAttribute('href')).toContain('t=42s');
     expect(await page.getByRole('button', { name: 'Positive', exact: true }).getAttribute('aria-keyshortcuts')).toBe('1');
     expect(await page.getByRole('button', { name: 'False positive', exact: true }).getAttribute('aria-keyshortcuts')).toBe('2');
     await page.getByLabel('Admin review notes').click();
@@ -121,11 +130,28 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await page.waitForTimeout(250);
     await expectVisible(page, page.locator('.queue-number').getByText('2', { exact: true }));
     await page.getByLabel('Admin review notes').fill('Confirmed visible link cue during review.');
+
+    await page.route('**/admin/feedback/*/review', async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: false, error: 'Review service unavailable.' })
+      });
+    });
+    const failedReviewResponse = page.waitForResponse((response) => response.url().includes('/admin/feedback/') && response.url().endsWith('/review'));
+    await page.getByRole('button', { name: 'Positive', exact: true }).click();
+    expect((await failedReviewResponse).status()).toBe(503);
+    await expectVisible(page, page.locator('.inline-alert').getByText('Review service unavailable.'));
+    await expectVisible(page, page.locator('.review-focus').getByText('candidate-link', { exact: true }));
+    expect(await page.getByLabel('Admin review notes').inputValue()).toBe('Confirmed visible link cue during review.');
+    await page.unroute('**/admin/feedback/*/review');
+
     const positiveReviewResponse = page.waitForResponse((response) => response.url().includes('/admin/feedback/') && response.url().endsWith('/review'));
     await page.getByRole('button', { name: 'Positive', exact: true }).click();
     const positiveReview = await positiveReviewResponse;
     expect(positiveReview.status()).toBe(200);
     await expectVisible(page, page.getByText('1', { exact: true }).first());
+    expect(await page.getByText('Review service unavailable.').count()).toBe(0);
     await expectVisible(page, page.locator('.recent-list').getByText('Positive'));
     await expectVisible(page, page.locator('.recent-list').getByText('Confirmed visible link cue during review.'));
 
