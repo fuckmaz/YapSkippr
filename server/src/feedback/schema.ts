@@ -2,6 +2,9 @@ import { z } from 'zod';
 
 const featureRecordSchema = z.record(z.string(), z.number().finite());
 
+export const feedbackModelSourceValues = ['bundled', 'downloaded', 'fallback'] as const;
+export const feedbackModelSourceSchema = z.enum(feedbackModelSourceValues);
+
 export const feedbackEvidenceSnapshotSchema = z.object({
   source: z.string().min(1),
   kind: z.string().min(1),
@@ -29,7 +32,7 @@ export const feedbackPayloadV2Schema = z.object({
   notes: z.string().optional(),
   modelId: z.string().nullable().optional(),
   modelVersion: z.string().nullable().optional(),
-  modelSource: z.string().optional(),
+  modelSource: feedbackModelSourceSchema.optional(),
   featureSchemaVersion: z.number().int().positive().optional(),
   heuristicConfidence: z.number().finite().min(0).max(1).optional(),
   modelConfidence: z.number().finite().min(0).max(1).optional(),
@@ -38,5 +41,6 @@ export const feedbackPayloadV2Schema = z.object({
   transcriptContext: z.string().optional()
 });
 
+export type FeedbackModelSource = z.infer<typeof feedbackModelSourceSchema>;
 export type FeedbackPayloadV2 = z.infer<typeof feedbackPayloadV2Schema>;
 export type FeedbackEvidenceSnapshot = z.infer<typeof feedbackEvidenceSnapshotSchema>;

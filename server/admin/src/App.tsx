@@ -35,6 +35,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 type Page = 'overview' | 'review' | 'feedback' | 'videos' | 'models' | 'training';
 type ThemePreference = 'system' | 'dark' | 'light';
 type ReviewLabel = 'positive' | 'false_positive' | 'wrong_timing' | 'duplicate' | 'ignored' | 'needs_more_data';
+type FeedbackModelSource = 'bundled' | 'downloaded' | 'fallback';
 
 interface ReviewAction {
   label: string;
@@ -70,7 +71,7 @@ interface FeedbackRecord {
     modelConfidence?: number;
     modelId?: string | null;
     modelVersion?: string | null;
-    modelSource?: string;
+    modelSource?: FeedbackModelSource;
     featureSchemaVersion?: number;
     candidateFeatures?: Record<string, number>;
     evidenceSnapshot?: Array<{
@@ -793,6 +794,7 @@ function FeedbackDetailPanel({ item }: { item: FeedbackRecord }): JSX.Element {
             <DetailRow label="Model confidence" value={formatPercent(item.payload.modelConfidence)} />
             <DetailRow label="Model" value={item.payload.modelId ?? 'fallback'} />
             <DetailRow label="Version" value={item.payload.modelVersion ?? 'fallback'} />
+            <DetailRow label="Model source" value={item.payload.modelSource ?? 'fallback'} />
             <DetailRow label="Feature schema" value={item.payload.featureSchemaVersion === undefined ? '-' : String(item.payload.featureSchemaVersion)} />
           </div>
         </section>

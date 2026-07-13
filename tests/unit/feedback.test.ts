@@ -1,5 +1,6 @@
 import {
   OCCURRENCE_FEEDBACK_ACTIONS,
+  OCCURRENCE_FEEDBACK_MODEL_SOURCE_VALUES,
   OCCURRENCE_FEEDBACK_VALUES,
   createOccurrenceFeedbackPayload,
   deriveAdminDashboardUrl
@@ -14,6 +15,10 @@ test('defines popup feedback actions for every supported occurrence feedback val
     { value: 'wrong_timing', label: 'Timing', title: 'Wrong timing' },
     { value: 'missed_context', label: 'Context', title: 'Missing context' }
   ]);
+});
+
+test('defines closed model source values for feedback payloads', () => {
+  expect(OCCURRENCE_FEEDBACK_MODEL_SOURCE_VALUES).toEqual(['bundled', 'downloaded', 'fallback']);
 });
 
 test('creates a server feedback payload for a detected occurrence', () => {

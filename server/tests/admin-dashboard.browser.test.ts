@@ -151,6 +151,8 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.getByRole('heading', { name: 'Training Dataset Details' }));
     await expectVisible(page, page.getByText('visibleLinkCount'));
     await expectVisible(page, page.locator('.training-dataset-detail-grid').getByText('Model confidence'));
+    await expectVisible(page, page.locator('.training-dataset-detail-grid').getByText('Model source'));
+    await expectVisible(page, page.locator('.training-dataset-detail-grid').getByText('downloaded', { exact: true }));
     await expectVisible(page, page.getByText('Evidence snapshot'));
     await expectVisible(page, page.getByText('This video is sponsored by Acme. Use code YAP.'));
     await expectVisible(page, page.locator('.training-readiness').getByText('Schema 2', { exact: true }));
@@ -168,6 +170,8 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.getByRole('heading', { name: 'Feedback Details' }));
     await expectVisible(page, page.getByText('Candidate features'));
     await expectVisible(page, page.getByText('visibleLinkCount'));
+    await expectVisible(page, page.locator('.feedback-detail-grid').getByText('Model source'));
+    await expectVisible(page, page.locator('.feedback-detail-grid').getByText('downloaded', { exact: true }));
     await expectVisible(page, page.getByText('Transcript context'));
     await expectVisible(page, page.getByText('This video is sponsored by Acme. Use code YAP.'));
     const timecodeLink = page.getByRole('link', { name: 'Open at timecode' });
@@ -294,6 +298,7 @@ async function seedFeedback(
       ...feedbackFixture().candidateFeatures,
       ...featureOverrides
     },
+    modelSource: source === 'frame-visible-link' ? 'downloaded' : 'bundled',
     modelConfidence: featureOverrides.modelConfidence ?? 0.82
   });
 

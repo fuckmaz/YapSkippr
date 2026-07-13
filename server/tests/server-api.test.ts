@@ -67,6 +67,66 @@ describe('YapSkippr server API', () => {
     await app.close();
   });
 
+  test('preserves accepted feedback model sources and rejects unknown sources', async () => {
+    const app = await buildServer({ adminToken: 'secret' });
+    const modelSources = ['bundled', 'downloaded', 'fallback'] as const;
+
+    for (const modelSource of modelSources) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/v1/feedback',
+        payload: feedbackFixture({
+          occurrenceId: `model-source-${modelSource}`,
+          modelSource
+        })
+      });
+
+      expect(response.statusCode).toBe(201);
+    }
+
+    const invalid = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: {
+        ...feedbackFixture({ occurrenceId: 'model-source-remote' }),
+        modelSource: 'remote'
+      }
+    });
+
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({
+      ok: false,
+      error: 'Invalid feedback payload.',
+      details: {
+        fieldErrors: {
+          modelSource: expect.arrayContaining([expect.any(String)])
+        }
+      }
+    });
+
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/admin/api/feedback',
+      headers: { 'x-admin-token': 'secret' }
+    });
+
+    expect(listed.statusCode).toBe(200);
+    const sourceByOccurrence = Object.fromEntries(
+      listed.json().items.map((item: { payload: { occurrenceId: string; modelSource?: string } }) => [
+        item.payload.occurrenceId,
+        item.payload.modelSource
+      ])
+    );
+    expect(sourceByOccurrence).toMatchObject({
+      'model-source-bundled': 'bundled',
+      'model-source-downloaded': 'downloaded',
+      'model-source-fallback': 'fallback'
+    });
+    expect(sourceByOccurrence).not.toHaveProperty('model-source-remote');
+
+    await app.close();
+  });
+
   test('rate limits public feedback submissions with retry headers', async () => {
     const app = await buildServer({
       adminToken: 'secret',

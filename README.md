@@ -153,6 +153,8 @@ The server package lives in `server/` and provides:
 - A React/Vite admin dashboard at `/admin`; the dashboard HTML and built `/admin/assets/*` files are protected by admin auth from `ADMIN_TOKEN`.
 - PostgreSQL persistence when `DATABASE_URL` is set, with an in-memory fallback for local development and tests.
 
+Feedback payload model metadata uses the closed `modelSource` values `bundled`, `downloaded`, or `fallback`; unknown values are rejected so admin analytics and training data stay consistent.
+
 Local development:
 
 ```bash

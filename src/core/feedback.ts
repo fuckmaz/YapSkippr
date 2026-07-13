@@ -1,9 +1,11 @@
 import type { EvidenceKind, EvidenceSource } from './types';
 
 export const OCCURRENCE_FEEDBACK_VALUES = ['accurate', 'false_positive', 'wrong_timing', 'missed_context'] as const;
+export const OCCURRENCE_FEEDBACK_MODEL_SOURCE_VALUES = ['bundled', 'downloaded', 'fallback'] as const;
 
 export type OccurrenceFeedbackValue = (typeof OCCURRENCE_FEEDBACK_VALUES)[number];
 export type OccurrenceFeedbackType = 'candidate' | 'evidence';
+export type OccurrenceFeedbackModelSource = (typeof OCCURRENCE_FEEDBACK_MODEL_SOURCE_VALUES)[number];
 
 export interface OccurrenceFeedbackAction {
   readonly value: OccurrenceFeedbackValue;
@@ -42,7 +44,7 @@ export interface OccurrenceFeedbackInput {
   notes?: string;
   modelId?: string | null;
   modelVersion?: string | null;
-  modelSource?: string;
+  modelSource?: OccurrenceFeedbackModelSource;
   featureSchemaVersion?: number;
   heuristicConfidence?: number;
   modelConfidence?: number;
