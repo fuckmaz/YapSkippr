@@ -16,6 +16,7 @@ export const feedbackPayloadV2Schema = z.object({
   app: z.literal('YapSkippr'),
   version: z.literal(2),
   createdAt: z.string().datetime(),
+  clientId: z.string().min(1).max(128).regex(/^[A-Za-z0-9._:-]+$/).optional(),
   videoUrl: z.string().url().nullable(),
   videoId: z.string().nullable(),
   occurrenceId: z.string().min(1),

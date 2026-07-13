@@ -38,6 +38,7 @@ export interface PromotionRecord {
 
 export interface DashboardSummary {
   totalFeedback: number;
+  uniqueClients: number;
   reviewedFeedback: number;
   pendingFeedback: number;
   modelVersions: number;

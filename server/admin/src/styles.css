@@ -407,7 +407,7 @@ nav em {
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
 }
 
@@ -435,6 +435,7 @@ nav em {
 .metric-card[data-accent="green"] svg { color: var(--green); }
 .metric-card[data-accent="yellow"] svg { color: var(--yellow); }
 .metric-card[data-accent="purple"] svg { color: var(--purple); }
+.metric-card[data-accent="orange"] svg { color: var(--orange); }
 .metric-card[data-accent="slate"] svg { color: var(--muted); }
 
 .metric-card span,

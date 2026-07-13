@@ -1,5 +1,6 @@
 import './style.css';
 import {
+  CLIENT_ID_STORAGE_KEY,
   FEEDBACK_ENDPOINT_STORAGE_KEY,
   TRANSCRIPT_PHRASE_GROUPS_STORAGE_KEY
 } from '../../core/extension-settings';
@@ -475,7 +476,9 @@ async function sendFeedbackForButton(button: HTMLButtonElement): Promise<void> {
   setFeedbackStatus('Sending feedback...');
 
   try {
+    const clientId = await loadAnonymousClientId();
     const payload = createOccurrenceFeedbackPayload({
+      ...(clientId ? { clientId } : {}),
       videoUrl: currentScanStatus.pageUrl,
       videoId: currentScanStatus.videoId,
       occurrenceId: button.dataset.occurrenceId ?? 'unknown',
@@ -527,6 +530,32 @@ function getFeedbackContext(
     evidenceSnapshot: candidate?.evidenceSnapshot ?? (evidence ? [toFeedbackEvidenceSnapshot(evidence)] : undefined),
     transcriptContext: candidate?.transcriptContext
   };
+}
+
+async function loadAnonymousClientId(): Promise<string | null> {
+  try {
+    const stored = await getLocalStorageValue(CLIENT_ID_STORAGE_KEY);
+    if (isValidClientId(stored)) return stored;
+
+    const clientId = createAnonymousClientId();
+    await setLocalStorageValue(CLIENT_ID_STORAGE_KEY, clientId);
+    return clientId;
+  } catch {
+    return null;
+  }
+}
+
+function createAnonymousClientId(): string {
+  const randomId = globalThis.crypto?.randomUUID?.()
+    ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  return `client_${randomId}`;
+}
+
+function isValidClientId(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length >= 'client_'.length + 8
+    && value.length <= 128
+    && /^client_[A-Za-z0-9._:-]+$/.test(value);
 }
 
 function toFeedbackEvidenceSnapshot(

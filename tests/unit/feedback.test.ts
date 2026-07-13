@@ -20,6 +20,7 @@ test('creates a server feedback payload for a detected occurrence', () => {
   expect(
     createOccurrenceFeedbackPayload(
       {
+        clientId: 'client_test-123',
         videoUrl: 'https://www.youtube.com/watch?v=abc123',
         videoId: 'abc123',
         occurrenceId: '200-0-frame-visible-link-42',
@@ -58,6 +59,7 @@ test('creates a server feedback payload for a detected occurrence', () => {
   ).toEqual({
     app: 'YapSkippr',
     version: 2,
+    clientId: 'client_test-123',
     videoUrl: 'https://www.youtube.com/watch?v=abc123',
     videoId: 'abc123',
     occurrenceId: '200-0-frame-visible-link-42',

@@ -44,7 +44,7 @@ When evidence is found, YapSkippr fuses the signals into candidate segments and 
 - Candidate jump actions for quickly seeking to detected segment start times.
 - Lightweight status block mounted near the YouTube player with evidence counts and clickable candidate timecodes.
 - Console logging for lower-level debugging while the detector is still evolving.
-- Optional feedback API integration with v2 payloads that include candidate features, evidence snapshots, transcript context, and model metadata.
+- Optional feedback API integration with v2 payloads that include an anonymous client ID, candidate features, evidence snapshots, transcript context, and model metadata.
 - Admin-only server dashboard for reviewing feedback, training models, inspecting metrics, and promoting or rolling back model artifacts.
 - Chrome and Chromium support first, with a Firefox build available for local testing.
 
@@ -219,7 +219,7 @@ server/
 
 ## Privacy And Permissions
 
-YapSkippr is local-first by default. Frame samples and video screenshots are not uploaded. If you configure the feedback endpoint, the extension sends structured feedback payloads containing the video URL, timecode, occurrence summary, candidate features, evidence metadata, transcript context, and model metadata.
+YapSkippr is local-first by default. Frame samples and video screenshots are not uploaded. If you configure the feedback endpoint, the extension sends structured feedback payloads containing an anonymous locally generated client ID, the video URL, timecode, occurrence summary, candidate features, evidence metadata, transcript context, and model metadata.
 
 The extension declares broad `<all_urls>` host access because browser APIs require either `<all_urls>` or `activeTab` for automatic `tabs.captureVisibleTab()` frame sampling. The content script itself is scoped to YouTube pages, and captured frames are processed locally.
 

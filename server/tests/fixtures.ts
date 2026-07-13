@@ -5,6 +5,7 @@ export function feedbackFixture(overrides: Partial<FeedbackPayloadV2> = {}): Fee
     app: 'YapSkippr',
     version: 2,
     createdAt: '2026-07-07T10:00:00.000Z',
+    clientId: 'client_fixture',
     videoUrl: 'https://www.youtube.com/watch?v=abc123',
     videoId: 'abc123',
     occurrenceId: 'candidate-42',

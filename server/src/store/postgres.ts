@@ -199,6 +199,7 @@ export function createPostgresRepository(databaseUrl: string): YapSkipprReposito
       const reviewed = feedback.filter((item) => item.review);
       return {
         totalFeedback: feedback.length,
+        uniqueClients: countUniqueClients(feedback),
         reviewedFeedback: reviewed.length,
         pendingFeedback: feedback.length - reviewed.length,
         modelVersions: models.length,
@@ -256,6 +257,10 @@ function toTrainingLabel(label: ReviewLabel): 0 | 1 | null {
   if (label === 'positive') return 1;
   if (label === 'false_positive' || label === 'duplicate' || label === 'ignored') return 0;
   return null;
+}
+
+function countUniqueClients(items: readonly FeedbackRecord[]): number {
+  return new Set(items.flatMap((item) => item.payload.clientId ? [item.payload.clientId] : [])).size;
 }
 
 function countBy<T>(items: readonly T[], getKey: (item: T) => string): Record<string, number> {

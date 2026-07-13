@@ -182,6 +182,8 @@ async function expectBuiltScripts(outputPath: string): Promise<void> {
   expect(popupScript).toContain('YAPSKIPPR_SEEK_TO');
   expect(popupScript).toContain('YAPSKIPPR_SET_FAST_SCAN');
   expect(popupScript).toContain('yapskippr.feedbackEndpoint');
+  expect(popupScript).toContain('yapskippr.clientId');
+  expect(popupScript).toContain('client_');
   expect(popupScript).toContain('missed_context');
   expect(popupScript).toContain('Missing context');
   expect(popupScript).toContain('yapskippr.transcriptPhraseGroups');

@@ -26,6 +26,7 @@ import {
   ThumbsUp,
   TimerReset,
   TrainTrack,
+  Users,
   XCircle,
   type LucideIcon
 } from 'lucide-react';
@@ -55,6 +56,7 @@ interface FeedbackRecord {
   id: string;
   receivedAt: string;
   payload: {
+    clientId?: string;
     videoUrl: string | null;
     videoId: string | null;
     occurrenceId: string;
@@ -175,6 +177,7 @@ interface DetectorQualityRow {
 
 interface Summary {
   totalFeedback: number;
+  uniqueClients: number;
   reviewedFeedback: number;
   pendingFeedback: number;
   modelVersions: number;
@@ -438,6 +441,7 @@ function Overview({ data, onPageChange }: { data: DashboardData; onPageChange: (
       <PageTitle title="Overview" description="System health, usage, feedback quality, and promoted model performance." />
       <div className="metric-grid">
         <MetricCard icon={Database} label="Total Feedback" value={summary?.totalFeedback ?? 0} accent="blue" detail="All submitted reports" />
+        <MetricCard icon={Users} label="Reporting Clients" value={summary?.uniqueClients ?? 0} accent="orange" detail="Anonymous installs" />
         <MetricCard icon={CheckCircle2} label="Reviewed" value={summary?.reviewedFeedback ?? 0} accent="green" detail="Admin labeled" />
         <MetricCard icon={TimerReset} label="Pending Review" value={summary?.pendingFeedback ?? 0} accent="yellow" detail="Queue size" />
         <MetricCard icon={Film} label="Videos Tracked" value={uniqueVideoCount(data.feedback)} accent="purple" detail="Unique videos" />
@@ -770,6 +774,7 @@ function FeedbackDetailPanel({ item }: { item: FeedbackRecord }): JSX.Element {
           <div className="summary-list">
             <DetailRow label="Occurrence" value={item.payload.occurrenceId} />
             <DetailRow label="Video" value={item.payload.videoId ?? 'unknown'} />
+            <DetailRow label="Client" value={item.payload.clientId ?? 'anonymous'} />
             <DetailRow label="Timecode" value={formatTime(item.payload.startSeconds)} />
             <DetailRow label="Source" value={sourceLabel(feedbackSource(item))} />
             <DetailRow label="Received" value={timeAgo(item.receivedAt)} />
@@ -1367,6 +1372,7 @@ function TrainingDatasetDetailPanel({ row, feedback }: { row: TrainingDatasetRow
           <div className="summary-list">
             <DetailRow label="Occurrence" value={row.occurrenceId} />
             <DetailRow label="Video" value={row.videoId ?? 'unknown'} />
+            <DetailRow label="Client" value={payload?.clientId ?? 'anonymous'} />
             <DetailRow label="Source" value={sourceLabel(row.source)} />
             <DetailRow label="Timecode" value={formatTime(row.startSeconds)} />
             <DetailRow label="Received" value={timeAgo(row.receivedAt)} />

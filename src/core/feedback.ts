@@ -29,6 +29,7 @@ export interface OccurrenceFeedbackEvidenceSnapshot {
 }
 
 export interface OccurrenceFeedbackInput {
+  clientId?: string;
   videoUrl: string | null;
   videoId: string | null;
   occurrenceId: string;

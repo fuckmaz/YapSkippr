@@ -123,11 +123,13 @@ describe('YapSkippr server API', () => {
 
   test('persists feedback v2 payloads and protects admin data', async () => {
     const app = await buildServer({ adminToken: 'secret' });
+    const legacyPayload = feedbackFixture();
+    delete legacyPayload.clientId;
 
     const feedback = await app.inject({
       method: 'POST',
       url: '/api/v1/feedback',
-      payload: feedbackFixture()
+      payload: legacyPayload
     });
     expect(feedback.statusCode).toBe(201);
     expect(feedback.json()).toMatchObject({ ok: true, feedbackId: expect.any(String) });
@@ -550,6 +552,7 @@ describe('YapSkippr server API', () => {
       payload: feedbackFixture({
         occurrenceId: 'candidate-old-schema-summary',
         videoId: 'video-old-summary',
+        clientId: 'client_alpha',
         featureSchemaVersion: 1
       })
     });
@@ -558,7 +561,8 @@ describe('YapSkippr server API', () => {
       url: '/api/v1/feedback',
       payload: feedbackFixture({
         occurrenceId: 'candidate-current-positive-summary',
-        videoId: 'video-current-positive-summary'
+        videoId: 'video-current-positive-summary',
+        clientId: 'client_beta'
       })
     });
     const currentSchemaNegative = await app.inject({
@@ -567,6 +571,7 @@ describe('YapSkippr server API', () => {
       payload: feedbackFixture({
         occurrenceId: 'candidate-current-negative-summary',
         videoId: 'video-current-negative-summary',
+        clientId: 'client_beta',
         feedback: 'false_positive',
         candidateFeatures: {
           ...feedbackFixture().candidateFeatures,
@@ -599,6 +604,7 @@ describe('YapSkippr server API', () => {
     });
     expect(summary.statusCode).toBe(200);
     expect(summary.json()).toMatchObject({
+      uniqueClients: 2,
       trainingReadiness: {
         featureSchemaVersion: 2,
         totalExamples: 3,
