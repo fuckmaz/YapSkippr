@@ -6,6 +6,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Database,
+  Download,
   Eye,
   Film,
   Gauge,
@@ -1043,6 +1044,12 @@ function ModelsPage({
           <button type="button" aria-label="Inspect model" onClick={() => void inspect(model)} disabled={busyAction !== null}>
             {busyAction === `inspect:${model.modelId}` ? <Loader2 size={14} className="spin" /> : <Eye size={14} />} Inspect
           </button>
+          <a href={modelArtifactExportHref(model.modelId)} download aria-label={`Download artifact JSON for ${model.modelId}`}>
+            <Download size={14} /> Artifact
+          </a>
+          <a href={modelEvaluationExportHref(model.modelId)} download aria-label={`Download evaluation JSON for ${model.modelId}`}>
+            <Download size={14} /> Evaluation
+          </a>
           <button type="button" onClick={() => void promote(model.modelId)} disabled={busyAction !== null || promoted?.modelId === model.modelId}>
             {busyAction === `promote:${model.modelId}` ? <Loader2 size={14} className="spin" /> : <CheckCircle2 size={14} />} Promote
           </button>
@@ -1217,9 +1224,14 @@ function TrainingPage({
   return (
     <section className="page-grid">
       <PageTitle title="Training" description="Create deterministic TypeScript-trained model artifacts from reviewed feedback." />
-      <button type="button" className="primary train-button" onClick={() => void train()} disabled={busy}>
-        {busy ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />} Train model
-      </button>
+      <div className="training-actions">
+        <button type="button" className="primary train-button" onClick={() => void train()} disabled={busy}>
+          {busy ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />} Train model
+        </button>
+        <a className="download-action" href="/admin/training-dataset/export" download aria-label="Download training dataset JSON">
+          <Download size={16} /> Dataset JSON
+        </a>
+      </div>
       {error ? <div className="inline-alert"><XCircle size={16} /> {error}</div> : null}
       <TrainingReadinessPanel readiness={summary?.trainingReadiness ?? null} />
       <div className="training-dataset-panel">
@@ -1532,6 +1544,14 @@ function sourceLabel(source: string): string {
     'frame-progress-bar': 'Progress bars'
   };
   return labels[source] ?? source.replace(/-/g, ' ');
+}
+
+function modelArtifactExportHref(modelId: string): string {
+  return `/admin/models/${encodeURIComponent(modelId)}/artifact`;
+}
+
+function modelEvaluationExportHref(modelId: string): string {
+  return `/admin/models/${encodeURIComponent(modelId)}/evaluation/export`;
 }
 
 function summarizeVideos(items: readonly FeedbackRecord[]): VideoSummaryRow[] {

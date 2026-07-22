@@ -47,6 +47,27 @@ test('matches sponsor phrases split across adjacent caption cues', () => {
   });
 });
 
+test('does not pull a sponsor cue backward into the preceding caption', () => {
+  const evidence = analyzeTranscriptCues([
+    cue(14, 'First, let us finish the setup.'),
+    cue(18, 'This episode is made possible by Acme VPN.')
+  ]);
+
+  expect(evidence).toHaveLength(1);
+  expect(evidence[0]?.startSeconds).toBe(18);
+});
+
+test('keeps a current-cue sponsor match when a higher-priority phrase starts in the next cue', () => {
+  const evidence = analyzeTranscriptCues([
+    cue(12, 'This episode is brought to you by Acme.'),
+    cue(16, "Today's sponsor is Beta.")
+  ]);
+
+  expect(evidence.map((item) => item.startSeconds)).toEqual([12, 16]);
+  expect(evidence[0]?.reason).toContain('brought to you by');
+  expect(evidence[1]?.reason).toContain("today's sponsor");
+});
+
 test('accepts code-configured transcript phrase groups', () => {
   const evidence = analyzeTranscriptCues(
     [cue(64, 'Creator break starts here before the main topic continues.')],

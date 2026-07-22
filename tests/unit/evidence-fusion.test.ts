@@ -58,28 +58,125 @@ test('filters isolated frame-only progress evidence below display threshold', ()
   expect(candidates).toEqual([]);
 });
 
-test('creates a low-confidence open candidate from repeated frame-only progress evidence', () => {
+test('surfaces isolated sponsor-semantic QR evidence above the display threshold', () => {
+  const candidates = buildSegmentCandidates([
+    evidence({
+      source: 'frame-qr-code',
+      kind: 'ad-read-presence',
+      startSeconds: 40,
+      confidence: 0.85,
+      reason: 'qr',
+      raw: { value: 'https://sponsor.example/offer', signal: 'sponsor-cta' }
+    })
+  ]);
+
+  expect(candidates).toHaveLength(1);
+  expect(candidates[0]?.startSeconds).toBe(40);
+  expect(candidates[0]?.confidence).toBeGreaterThanOrEqual(0.4);
+});
+
+test('does not surface a generic decoded HTTP QR without corroboration', () => {
+  const candidates = buildSegmentCandidates([
+    evidence({
+      source: 'frame-qr-code',
+      kind: 'ad-read-presence',
+      startSeconds: 40,
+      confidence: 0.85,
+      reason: 'ordinary QR URL',
+      raw: { value: 'https://www.wikipedia.org/wiki/QR_code', signal: 'low-signal', payloadType: 'url' }
+    })
+  ]);
+
+  expect(candidates).toEqual([]);
+});
+
+test('allows persistent generic QR evidence after three independent sampled observations', () => {
+  const candidates = buildSegmentCandidates([40, 48, 56].map((startSeconds) => evidence({
+    source: 'frame-qr-code',
+    kind: 'ad-read-presence',
+    startSeconds,
+    confidence: 0.32,
+    reason: 'persistent ordinary QR URL',
+    raw: { value: 'https://www.wikipedia.org/wiki/QR_code', signal: 'low-signal', payloadType: 'url' }
+  })));
+
+  expect(candidates).toHaveLength(1);
+  expect(candidates[0]?.confidence).toBeCloseTo(0.48);
+});
+
+test('coalesces duplicate QR frames before scoring', () => {
+  const candidates = buildSegmentCandidates([
+    evidence({
+      source: 'frame-qr-code',
+      kind: 'ad-read-presence',
+      startSeconds: 40,
+      confidence: 0.85,
+      reason: 'qr',
+      raw: { value: 'https://sponsor.example/offer', signal: 'sponsor-cta' }
+    }),
+    evidence({
+      source: 'frame-qr-code',
+      kind: 'ad-read-presence',
+      startSeconds: 44,
+      confidence: 0.9,
+      reason: 'same qr',
+      raw: { value: 'https://sponsor.example/offer', signal: 'sponsor-cta' }
+    })
+  ]);
+
+  expect(candidates).toHaveLength(1);
+  expect(candidates[0]?.evidence).toHaveLength(1);
+  expect(candidates[0]?.confidence).toBeLessThan(0.5);
+});
+
+test('does not inflate confidence from duplicate frame-only progress evidence', () => {
   const candidates = buildSegmentCandidates([
     evidence({
       source: 'frame-progress-bar',
       kind: 'ad-read-presence',
       startSeconds: 40,
       confidence: 0.65,
-      reason: 'bar'
+      reason: 'bar',
+      raw: { frameWidth: 960, frameHeight: 540, trackStartX: 10, trackEndX: 800, y: 120, rows: 2, fillRatio: 0.25 }
     }),
     evidence({
       source: 'frame-progress-bar',
       kind: 'ad-read-presence',
       startSeconds: 43,
       confidence: 0.65,
-      reason: 'bar'
+      reason: 'same bar',
+      raw: { frameWidth: 960, frameHeight: 540, trackStartX: 10, trackEndX: 800, y: 121, rows: 2, fillRatio: 0.26 }
     })
   ]);
 
-  expect(candidates).toHaveLength(1);
-  expect(candidates[0]?.startSeconds).toBe(40);
-  expect(candidates[0]?.endSeconds).toBeUndefined();
-  expect(candidates[0]?.confidence).toBeLessThan(0.7);
+  expect(candidates).toEqual([]);
+});
+
+test('never surfaces detector-realistic moving progress output without corroboration', () => {
+  const candidates = buildSegmentCandidates([
+    evidence({
+      source: 'frame-progress-bar',
+      kind: 'ad-read-presence',
+      startSeconds: 40,
+      confidence: 0.78,
+      reason: 'Confirmed a changing horizontal progress bar across consecutive video frames.',
+      raw: {
+        frameWidth: 960,
+        frameHeight: 540,
+        trackStartX: 120,
+        trackEndX: 840,
+        startX: 120,
+        endX: 480,
+        y: 180,
+        rows: 3,
+        fillRatio: 0.5007,
+        temporalObservations: 2,
+        fillDelta: 0.12
+      }
+    })
+  ]);
+
+  expect(candidates).toEqual([]);
 });
 
 test('creates an open candidate from visible link evidence', () => {
@@ -134,27 +231,30 @@ test('clusters repeated nearby frame-only evidence into one candidate', () => {
       kind: 'ad-read-presence',
       startSeconds: 40,
       confidence: 0.65,
-      reason: 'bar'
+      reason: 'bar',
+      raw: { frameWidth: 960, frameHeight: 540, trackStartX: 10, trackEndX: 800, y: 120, rows: 2, fillRatio: 0.25 }
     }),
     evidence({
       source: 'frame-progress-bar',
       kind: 'ad-read-presence',
       startSeconds: 42,
       confidence: 0.62,
-      reason: 'bar'
+      reason: 'same bar',
+      raw: { frameWidth: 960, frameHeight: 540, trackStartX: 10, trackEndX: 800, y: 121, rows: 2, fillRatio: 0.26 }
     }),
     evidence({
       source: 'frame-qr-code',
       kind: 'ad-read-presence',
       startSeconds: 45,
       confidence: 0.85,
-      reason: 'qr'
+      reason: 'qr',
+      raw: { value: 'https://sponsor.example/offer', signal: 'sponsor-cta' }
     })
   ]);
 
   expect(candidates).toHaveLength(1);
   expect(candidates[0]?.startSeconds).toBe(40);
-  expect(candidates[0]?.evidence).toHaveLength(3);
+  expect(candidates[0]?.evidence).toHaveLength(2);
   expect(candidates[0]?.confidence).toBeGreaterThan(0.65);
 });
 

@@ -157,6 +157,9 @@ describe('YapSkippr admin dashboard browser workflow', () => {
 
     await page.getByRole('button', { name: 'Training' }).click();
     await expectVisible(page, page.getByRole('heading', { name: 'Training Readiness' }));
+    const trainingDatasetExportLink = page.getByRole('link', { name: 'Download training dataset JSON' });
+    await expectVisible(page, trainingDatasetExportLink);
+    expect(await trainingDatasetExportLink.getAttribute('href')).toBe('/admin/training-dataset/export');
     await expectVisible(page, page.getByRole('heading', { name: 'Training Dataset Explorer' }));
     await expectVisible(page, page.getByRole('columnheader', { name: 'Trainable' }));
     await expectVisible(page, page.getByText('candidate-link').first());
@@ -254,11 +257,18 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await page.getByLabel('Model sort').selectOption('f1-desc');
     await expectVisible(page, page.getByRole('columnheader', { name: 'F1' }));
     await page.getByLabel('Model status filter').selectOption('all');
+    const modelRow = page.locator('tbody tr').filter({ hasText: /model_/ }).first();
 
     const evaluationResponse = page.waitForResponse((response) => response.url().includes('/admin/models/') && response.url().endsWith('/evaluation'));
-    await page.getByRole('button', { name: 'Inspect model' }).click();
+    await modelRow.getByRole('button', { name: 'Inspect model' }).click();
     expect((await evaluationResponse).status()).toBe(200);
     await expectVisible(page, page.getByRole('heading', { name: 'Model Evaluation' }));
+    const artifactExportLink = modelRow.getByRole('link', { name: /Download artifact JSON for model_/ });
+    const evaluationExportLink = modelRow.getByRole('link', { name: /Download evaluation JSON for model_/ });
+    await expectVisible(page, artifactExportLink);
+    await expectVisible(page, evaluationExportLink);
+    expect(await artifactExportLink.getAttribute('href')).toMatch(/^\/admin\/models\/model_[^/]+\/artifact$/);
+    expect(await evaluationExportLink.getAttribute('href')).toMatch(/^\/admin\/models\/model_[^/]+\/evaluation\/export$/);
     await expectVisible(page, page.getByText('Feature weights'));
     await expectVisible(page, page.getByText('Training summary'));
     await expectVisible(page, page.getByText('Artifact metadata'));

@@ -125,8 +125,9 @@ export function analyzeTranscriptCues(
   const contextCueCount = Math.max(1, Math.floor(options.contextCueCount ?? 2));
 
   for (const [index, cue] of cues.entries()) {
+    const currentCueText = normalizeText(cue.text);
     const normalized = normalizeText(getCueWindowText(cues, index, contextCueCount));
-    const match = findPhraseGroupMatch(normalized, phraseGroups);
+    const match = findPhraseGroupMatch(normalized, phraseGroups, currentCueText.length);
     if (match) {
       evidence.push({
         source: 'transcript',
@@ -215,26 +216,30 @@ function normalizeText(text: string): string {
 
 function findPhraseGroupMatch(
   normalizedText: string,
-  phraseGroups: readonly TranscriptPhraseGroup[]
+  phraseGroups: readonly TranscriptPhraseGroup[],
+  currentCueLength: number
 ): { group: TranscriptPhraseGroup; phrase: string } | null {
   for (const group of phraseGroups) {
     if (group.enabled === false) continue;
-    const phrase = findPattern(normalizedText, group.phrases);
+    const phrase = findPattern(normalizedText, group.phrases, currentCueLength);
     if (phrase) return { group, phrase };
   }
 
   return null;
 }
 
-function findPattern(normalizedText: string, patterns: readonly string[]): string | null {
-  return patterns.find((pattern) => matchesPattern(normalizedText, pattern)) ?? null;
+function findPattern(normalizedText: string, patterns: readonly string[], currentCueLength: number): string | null {
+  return patterns.find((pattern) => {
+    const startIndex = findPatternStartIndex(normalizedText, pattern);
+    return startIndex >= 0 && startIndex < currentCueLength;
+  }) ?? null;
 }
 
-function matchesPattern(normalizedText: string, pattern: string): boolean {
+function findPatternStartIndex(normalizedText: string, pattern: string): number {
   const normalizedPattern = normalizeText(pattern);
-  if (!normalizedPattern) return false;
-  if (normalizedPattern.includes(' ')) return normalizedText.includes(normalizedPattern);
-  return new RegExp(`\\b${escapeRegExp(normalizedPattern)}\\b`).test(normalizedText);
+  if (!normalizedPattern) return -1;
+  if (normalizedPattern.includes(' ')) return normalizedText.indexOf(normalizedPattern);
+  return new RegExp(`\\b${escapeRegExp(normalizedPattern)}\\b`).exec(normalizedText)?.index ?? -1;
 }
 
 function escapeRegExp(value: string): string {

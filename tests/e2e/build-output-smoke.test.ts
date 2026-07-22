@@ -9,11 +9,18 @@ interface ExtensionManifest {
   description?: string;
   host_permissions?: string[];
   permissions?: string[];
+  optional_host_permissions?: string[];
+  optional_permissions?: string[];
   browser_specific_settings?: {
+    gecko_android?: {
+      strict_min_version?: string;
+    };
     gecko?: {
       id?: string;
+      strict_min_version?: string;
       data_collection_permissions?: {
         required?: string[];
+        optional?: string[];
       };
     };
   };
@@ -34,10 +41,14 @@ test('Chrome build output contains the YouTube content script and preserved meta
   expect(manifest.name).toBe('YapSkippr');
   expect(manifest.description).toBe('In-Video Sponsorship- and Ad-Skipper');
   expect(manifest.permissions).toContain('activeTab');
-  expect(manifest.host_permissions).toContain('<all_urls>');
+  expect(manifest.permissions).toContain('alarms');
+  expect(manifest.host_permissions).not.toContain('<all_urls>');
+  expect(manifest.host_permissions).toContain('https://www.youtube.com/*');
+  expect(manifest.optional_host_permissions).toEqual(['<all_urls>']);
   expect(manifest.browser_specific_settings).toBeUndefined();
   expectYouTubeContentScript(manifest);
   await expectBuiltScripts('.output/chrome-mv3');
+  await expectResponsivePopupStyles('.output/chrome-mv3');
 });
 
 test('Firefox build output declares Gecko metadata and keeps feature parity', async () => {
@@ -47,11 +58,23 @@ test('Firefox build output declares Gecko metadata and keeps feature parity', as
   expect(manifest.name).toBe('YapSkippr');
   expect(manifest.description).toBe('In-Video Sponsorship- and Ad-Skipper');
   expect(manifest.permissions).toContain('activeTab');
-  expect(manifest.permissions).toContain('<all_urls>');
+  expect(manifest.permissions).toContain('alarms');
+  expect(manifest.permissions).not.toContain('<all_urls>');
+  expect(manifest.permissions).toContain('https://www.youtube.com/*');
+  expect(manifest.optional_permissions).toEqual(['<all_urls>']);
   expect(manifest.browser_specific_settings?.gecko?.id).toBe('yapskippr@maz.dev');
+  expect(manifest.browser_specific_settings?.gecko?.strict_min_version).toBe('140.0');
+  expect(manifest.browser_specific_settings?.gecko_android?.strict_min_version).toBe('142.0');
   expect(manifest.browser_specific_settings?.gecko?.data_collection_permissions?.required).toEqual(['none']);
+  expect(manifest.browser_specific_settings?.gecko?.data_collection_permissions?.optional).toEqual([
+    'personallyIdentifyingInfo',
+    'browsingActivity',
+    'websiteContent',
+    'technicalAndInteraction'
+  ]);
   expectYouTubeContentScript(manifest);
   await expectBuiltScripts('.output/firefox-mv2');
+  await expectResponsivePopupStyles('.output/firefox-mv2');
 });
 
 test('installable archives contain browser extension payloads, not source bundles', async () => {
@@ -62,7 +85,22 @@ test('installable archives contain browser extension payloads, not source bundle
   const firefoxZipEntries = new Set((await readZipEntries('.output/installable/yapskippr-firefox.zip')).map((entry) => entry.name));
 
   expect(chromeManifest.manifest_version).toBe(3);
+  expect(chromeManifest.host_permissions).not.toContain('<all_urls>');
+  expect(chromeManifest.optional_host_permissions).toEqual(['<all_urls>']);
   expect(firefoxManifest.manifest_version).toBe(2);
+  expect(firefoxManifest.permissions).not.toContain('<all_urls>');
+  expect(firefoxManifest.optional_permissions).toEqual(['<all_urls>']);
+  expect(firefoxManifest.browser_specific_settings?.gecko?.strict_min_version).toBe('140.0');
+  expect(firefoxManifest.browser_specific_settings?.gecko_android?.strict_min_version).toBe('142.0');
+  expect(firefoxManifest.browser_specific_settings?.gecko?.data_collection_permissions).toEqual({
+    required: ['none'],
+    optional: [
+      'personallyIdentifyingInfo',
+      'browsingActivity',
+      'websiteContent',
+      'technicalAndInteraction'
+    ]
+  });
   expect(firefoxXpiManifest).toEqual(firefoxManifest);
   expect(chromeZipEntries.has('content-scripts/youtube.js')).toBe(true);
   expect(chromeZipEntries.has('popup.html')).toBe(true);
@@ -148,23 +186,56 @@ async function expectBuiltScripts(outputPath: string): Promise<void> {
   expect(contentScript).toContain('YAPSKIPPR_CAPTURE_VISIBLE_TAB');
   expect(contentScript).toContain('YAPSKIPPR_SEEK_TO');
   expect(contentScript).toContain('YAPSKIPPR_SET_FAST_SCAN');
+  expect(contentScript).toContain('YAPSKIPPR_CLAIM_SCAN_STATUS');
+  expect(contentScript).toContain('YAPSKIPPR_UPDATE_SCAN_STATUS');
+  expect(contentScript).toContain('YAPSKIPPR_GET_SCAN_CAPABILITY');
+  expect(contentScript).toContain('scan status persistence disabled');
   expect(contentScript).toContain('frame-progress-bar');
   expect(contentScript).toContain('frame-qr-code');
   expect(contentScript).toContain('frame-visible-link');
   expect(contentScript).toContain('yapskippr.transcriptPhraseGroups');
+  expect(contentScript).toContain('yapskippr.autoSkipEnabled');
+  expect(contentScript).toContain('Auto-skipped detected ad read');
+  expect(contentScript).toContain('Auto-skip undone');
+  expect(contentScript).toContain('Only high-confidence segments with detected endings will be skipped.');
+  expect(contentScript).toContain('aria-live');
+  expect(contentScript).toContain('aria-atomic');
+  expect(contentScript).not.toContain('.innerHTML=');
 
   const backgroundScript = await readFile(join(process.cwd(), outputPath, 'background.js'), 'utf8');
   expect(backgroundScript).toContain('setBadgeText');
   expect(backgroundScript).toContain('setBadgeBackgroundColor');
   expect(backgroundScript).toContain('yapskippr.scanStatus');
+  expect(backgroundScript).toContain('yapskippr.scanOwner');
+  expect(backgroundScript).toContain('YAPSKIPPR_CLAIM_SCAN_STATUS');
+  expect(backgroundScript).toContain('YAPSKIPPR_UPDATE_SCAN_STATUS');
+  expect(backgroundScript).toContain('storage.session');
+  expect(backgroundScript).toContain('alarms.create');
+  expect(backgroundScript).toContain('alarms.onAlarm');
+  expect(backgroundScript).not.toContain('setInterval');
+  expect(backgroundScript).toMatch(/setBadgeText\(\{tabId:/);
+  expect(backgroundScript).toMatch(/setBadgeBackgroundColor\(\{tabId:/);
+  expect(backgroundScript).toMatch(/setTitle\(\{tabId:/);
 
   const popupHtml = await readFile(join(process.cwd(), outputPath, 'popup.html'), 'utf8');
   expect(popupHtml).toContain('Grant frame capture access');
   expect(popupHtml).toContain('Current scan');
   expect(popupHtml).toContain('Fast pre-scan');
+  expect(popupHtml).toMatch(/id="fast-scan-toggle"[^>]*disabled/);
   expect(popupHtml).toContain('Evidence');
+  expect(popupHtml).toContain('Auto-skip');
+  expect(popupHtml).toContain('High-confidence segments with a detected ending only.');
+  expect(popupHtml).toMatch(/id="auto-skip-toggle"[^>]*aria-pressed="false"[^>]*disabled/);
   expect(popupHtml).toContain('Detailed mode');
+  expect(popupHtml).toContain('Share feedback');
+  expect(popupHtml).toMatch(/id="feedback-consent"[^>]*disabled/);
+  expect(popupHtml).toContain('Off by default');
+  expect(popupHtml).toContain('stable anonymous ID');
+  expect(popupHtml).toContain('nearby transcript text');
   expect(popupHtml).toContain('Feedback API endpoint');
+  expect(popupHtml).toContain('Save requests access only to this endpoint origin');
+  expect(popupHtml).toMatch(/id="fast-scan-status"[^>]*aria-live="polite"/);
+  expect(popupHtml).toMatch(/id="permission-status"[^>]*aria-live="polite"/);
   expect(popupHtml).toContain('Open admin dashboard');
   expect(popupHtml).toContain('Transcript phrase groups');
   expect(popupHtml).toContain('Recent activity');
@@ -175,18 +246,41 @@ async function expectBuiltScripts(outputPath: string): Promise<void> {
 
   const popupScript = await readFile(join(process.cwd(), outputPath, 'chunks', popupChunk ?? ''), 'utf8');
   expect(popupScript).toContain('permissions.request');
+  expect(popupScript).toContain('Firefox permission removal failed');
   expect(popupScript).toContain('<all_urls>');
   expect(popupScript).toContain('yapskippr.scanStatus');
+  expect(popupScript).toContain('storage.session');
   expect(popupScript).toContain('storage.onChanged');
+  expect(popupScript).toContain('popup has no active tab ownership');
   expect(popupScript).toContain('tabs.sendMessage');
   expect(popupScript).toContain('YAPSKIPPR_SEEK_TO');
   expect(popupScript).toContain('YAPSKIPPR_SET_FAST_SCAN');
+  expect(popupScript).toContain('YAPSKIPPR_GET_SCAN_CAPABILITY');
   expect(popupScript).toContain('yapskippr.feedbackEndpoint');
+  expect(popupScript).toContain('yapskippr.feedbackConsent');
   expect(popupScript).toContain('yapskippr.clientId');
+  expect(popupScript).toContain('AbortController');
+  expect(popupScript).toContain('signal:');
+  expect(popupScript).toContain('data_collection');
+  expect(popupScript).toContain('personallyIdentifyingInfo');
   expect(popupScript).toContain('client_');
   expect(popupScript).toContain('missed_context');
   expect(popupScript).toContain('Missing context');
   expect(popupScript).toContain('yapskippr.transcriptPhraseGroups');
-  expect(popupScript).toContain('Feedback endpoint saved. Admin dashboard link ready.');
+  expect(popupScript).toContain('yapskippr.autoSkipEnabled');
+  expect(popupScript).toContain('Undo is available beside the YouTube player after every skip.');
+  expect(popupScript).toContain('Feedback endpoint saved with origin access. Sharing follows the switch above.');
   expect(popupScript).toContain('Transcript phrase groups saved');
+}
+
+async function expectResponsivePopupStyles(outputPath: string): Promise<void> {
+  const assetFiles = await readdir(join(process.cwd(), outputPath, 'assets'));
+  const popupStylesheet = assetFiles.find((file) => file.startsWith('popup-') && file.endsWith('.css'));
+  expect(popupStylesheet).toBeTruthy();
+
+  const popupCss = await readFile(join(process.cwd(), outputPath, 'assets', popupStylesheet ?? ''), 'utf8');
+  expect(popupCss).toMatch(/body\{[^}]*width:390px;min-width:0;max-width:390px;[^}]*overflow-x:hidden/);
+  expect(popupCss).toMatch(/@media ?\((?:max-width:390px|width<=390px)\)\{body\{width:100%;max-width:100vw\}\}/);
+  expect(popupCss).toMatch(/@media ?\((?:max-width:360px|width<=360px)\)\{main\{padding:12px\}/);
+  expect(popupCss).toMatch(/\.permission-panel\{grid-template-columns:minmax\(0,1fr\)\}/);
 }

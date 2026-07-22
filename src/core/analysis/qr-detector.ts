@@ -2,13 +2,36 @@ import jsQR, { type QRCode } from 'jsqr';
 import type { TimedEvidence } from '../types';
 
 interface BarcodeDetectorLike {
-  detect(imageData: ImageData): Promise<Array<{ rawValue?: string; format?: string }>>;
+  detect(image: CanvasImageSource | ImageData): Promise<Array<{ rawValue?: string; format?: string }>>;
 }
 
 type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorLike;
-type JsQrDetector = 'jsqr' | 'jsqr-upscaled';
+type JsQrDetector = 'jsqr' | 'jsqr-upscaled' | 'jsqr-region' | 'jsqr-region-upscaled';
+type QrPayloadType = 'url' | 'promo-code' | 'plain-text';
+type QrSignal = 'sponsor-cta' | 'low-signal';
+
+interface QrPayloadClassification {
+  signal: QrSignal;
+  payloadType: QrPayloadType;
+  reason: string;
+}
+
+interface QrCoordinateTransform {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+interface ImageRegion {
+  imageData: ImageData;
+  offsetX: number;
+  offsetY: number;
+}
 
 const MAX_UPSCALED_PIXELS = 1_200_000;
+const SPONSOR_QR_CONFIDENCE = 0.85;
+const SPONSOR_QR_UPSCALED_CONFIDENCE = 0.82;
+const LOW_SIGNAL_QR_CONFIDENCE = 0.32;
 
 export async function detectQrCue(imageData: ImageData, currentTimeSeconds: number): Promise<TimedEvidence[]> {
   const nativeEvidence = await detectWithNativeBarcodeDetector(imageData, currentTimeSeconds);
@@ -18,27 +41,195 @@ export async function detectQrCue(imageData: ImageData, currentTimeSeconds: numb
   if (result?.data) return [createQrEvidence(result, currentTimeSeconds, 'jsqr')];
 
   const upscaled = upscaleForQrRetry(imageData);
-  if (!upscaled) return [];
+  if (upscaled) {
+    const upscaledResult = decodeWithJsQr(upscaled.imageData);
+    if (upscaledResult?.data) {
+      return [createQrEvidence(upscaledResult, currentTimeSeconds, 'jsqr-upscaled', { scale: upscaled.factor, offsetX: 0, offsetY: 0 })];
+    }
+  }
 
-  const upscaledResult = jsQR(upscaled.imageData.data, upscaled.imageData.width, upscaled.imageData.height, { inversionAttempts: 'attemptBoth' });
-  if (upscaledResult?.data) return [createQrEvidence(upscaledResult, currentTimeSeconds, 'jsqr-upscaled', upscaled.factor)];
+  for (const region of createQrSearchRegions(imageData)) {
+    const regionalResult = decodeWithJsQr(region.imageData);
+    if (regionalResult?.data) {
+      return [createQrEvidence(regionalResult, currentTimeSeconds, 'jsqr-region', {
+        scale: 1,
+        offsetX: region.offsetX,
+        offsetY: region.offsetY
+      })];
+    }
+
+    const enhanced = stretchImageContrast(region.imageData);
+    const regionalUpscaled = upscaleForQrRetry(enhanced);
+    const retryImage = regionalUpscaled?.imageData ?? enhanced;
+    const retryResult = decodeWithJsQr(retryImage);
+    if (retryResult?.data) {
+      return [createQrEvidence(retryResult, currentTimeSeconds, 'jsqr-region-upscaled', {
+        scale: regionalUpscaled?.factor ?? 1,
+        offsetX: region.offsetX,
+        offsetY: region.offsetY
+      })];
+    }
+  }
 
   return [];
 }
 
-function createQrEvidence(result: QRCode, currentTimeSeconds: number, detector: JsQrDetector, coordinateScale = 1): TimedEvidence {
+function createQrEvidence(
+  result: QRCode,
+  currentTimeSeconds: number,
+  detector: JsQrDetector,
+  transform: QrCoordinateTransform = { scale: 1, offsetX: 0, offsetY: 0 }
+): TimedEvidence {
+  const classification = classifyQrPayload(result.data);
+  const baseConfidence = detector.includes('upscaled') ? SPONSOR_QR_UPSCALED_CONFIDENCE : SPONSOR_QR_CONFIDENCE;
+
   return {
     source: 'frame-qr-code',
     kind: 'ad-read-presence',
     startSeconds: currentTimeSeconds,
-    confidence: detector === 'jsqr-upscaled' ? 0.82 : 0.85,
-    reason: 'Detected QR code in sampled video frame.',
+    confidence: classification.signal === 'sponsor-cta' ? baseConfidence : LOW_SIGNAL_QR_CONFIDENCE,
+    reason: classification.signal === 'sponsor-cta'
+      ? 'Detected sponsor-like QR code in sampled video frame.'
+      : 'Detected QR code in sampled video frame, but decoded payload is low-signal.',
     raw: {
       value: result.data,
       detector,
-      location: scaleQrLocation(result.location, coordinateScale)
+      signal: classification.signal,
+      payloadType: classification.payloadType,
+      classificationReason: classification.reason,
+      location: transformQrLocation(result.location, transform)
     }
   };
+}
+
+export function classifyQrPayload(value: string): QrPayloadClassification {
+  const normalized = value.trim();
+  if (isUrlLikeQrPayload(normalized)) {
+    const sponsorSemantics = findSponsorUrlSemantics(normalized);
+    return {
+      signal: sponsorSemantics ? 'sponsor-cta' : 'low-signal',
+      payloadType: 'url',
+      reason: sponsorSemantics
+        ? `decoded URL contains sponsor CTA semantics (${sponsorSemantics})`
+        : 'decoded payload is a generic URL without sponsor CTA semantics'
+    };
+  }
+
+  if (isPromoCodeLikeQrPayload(normalized)) {
+    return {
+      signal: 'sponsor-cta',
+      payloadType: 'promo-code',
+      reason: 'decoded payload looks like a promo code or coupon CTA'
+    };
+  }
+
+  return {
+    signal: 'low-signal',
+    payloadType: 'plain-text',
+    reason: 'decoded payload is plain text without a URL or promo CTA'
+  };
+}
+
+function findSponsorUrlSemantics(value: string): string | null {
+  const parsed = parseUrlLikePayload(value);
+  if (!parsed) return null;
+
+  const sponsorTokens = /(?:^|[._~!$&'()*+,;=:@/?#-])(?:affiliate|bonus|checkout|claim|coupon|deal|discount|gift|offer|partner|promo|redeem|shop|sponsor|subscribe|trial)(?:$|[._~!$&'()*+,;=:@/?#-])/i;
+  const searchable = `${parsed.hostname}${parsed.pathname}${parsed.search}${parsed.hash}`;
+  return searchable.match(sponsorTokens)?.[0]?.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, '').toLowerCase() ?? null;
+}
+
+function parseUrlLikePayload(value: string): URL | null {
+  try {
+    return new URL(value);
+  } catch {
+    try {
+      return new URL(`https://${value}`);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function isUrlLikeQrPayload(value: string): boolean {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return /^(?:www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?:[/?#:]|$)/i.test(value);
+  }
+}
+
+function isPromoCodeLikeQrPayload(value: string): boolean {
+  if (!value || value.length > 80) return false;
+  const upper = value.toUpperCase();
+  if (/\b(?:USE\s+)?(?:CODE|COUPON|PROMO|DISCOUNT|SAVE)\b/.test(upper)) return true;
+  if (/\b[A-Z0-9]{4,16}\b/.test(upper) && /(?:%|\$|OFF|SAVE|DEAL|GIFT|FREE)/.test(upper)) return true;
+  return false;
+}
+
+function decodeWithJsQr(imageData: ImageData): QRCode | null {
+  return jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
+}
+
+function createQrSearchRegions(imageData: ImageData): ImageRegion[] {
+  if (imageData.width < 180 || imageData.height < 140) return [];
+  const regionWidth = Math.min(imageData.width, Math.max(180, Math.round(imageData.width * 0.36)));
+  const regionHeight = Math.min(imageData.height, Math.max(140, Math.round(imageData.height * 0.54)));
+  const right = imageData.width - regionWidth;
+  const bottom = imageData.height - regionHeight;
+  const centerX = Math.round(right / 2);
+  const centerY = Math.round(bottom / 2);
+  const positions = [
+    [0, 0],
+    [right, 0],
+    [0, bottom],
+    [right, bottom],
+    [centerX, centerY]
+  ] as const;
+
+  return positions.map(([x, y]) => ({
+    imageData: cropImageData(imageData, x, y, regionWidth, regionHeight),
+    offsetX: x,
+    offsetY: y
+  }));
+}
+
+function cropImageData(source: ImageData, left: number, top: number, width: number, height: number): ImageData {
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    const sourceStart = ((top + y) * source.width + left) * 4;
+    const targetStart = y * width * 4;
+    data.set(source.data.subarray(sourceStart, sourceStart + width * 4), targetStart);
+  }
+  return { data, width, height, colorSpace: source.colorSpace } as ImageData;
+}
+
+function stretchImageContrast(source: ImageData): ImageData {
+  let darkest = 255;
+  let lightest = 0;
+  for (let offset = 0; offset < source.data.length; offset += 4) {
+    const luminance = pixelLuminance(source.data, offset);
+    darkest = Math.min(darkest, luminance);
+    lightest = Math.max(lightest, luminance);
+  }
+  if (lightest - darkest < 24) return source;
+
+  const data = new Uint8ClampedArray(source.data.length);
+  const scale = 255 / (lightest - darkest);
+  for (let offset = 0; offset < source.data.length; offset += 4) {
+    const value = Math.round((pixelLuminance(source.data, offset) - darkest) * scale);
+    data[offset] = value;
+    data[offset + 1] = value;
+    data[offset + 2] = value;
+    data[offset + 3] = source.data[offset + 3] ?? 255;
+  }
+  return { data, width: source.width, height: source.height, colorSpace: source.colorSpace } as ImageData;
+}
+
+function pixelLuminance(data: Uint8ClampedArray, offset: number): number {
+  return Math.round((data[offset] ?? 0) * 0.299 + (data[offset + 1] ?? 0) * 0.587 + (data[offset + 2] ?? 0) * 0.114);
 }
 
 function upscaleForQrRetry(imageData: ImageData): { imageData: ImageData; factor: number } | null {
@@ -79,28 +270,28 @@ function chooseUpscaleFactor(width: number, height: number): number {
   return factor;
 }
 
-function scaleQrLocation(location: QRCode['location'], scale: number): QRCode['location'] {
+function transformQrLocation(location: QRCode['location'], transform: QrCoordinateTransform): QRCode['location'] {
   const scaled: QRCode['location'] = {
-    topRightCorner: scalePoint(location.topRightCorner, scale),
-    topLeftCorner: scalePoint(location.topLeftCorner, scale),
-    bottomRightCorner: scalePoint(location.bottomRightCorner, scale),
-    bottomLeftCorner: scalePoint(location.bottomLeftCorner, scale),
-    topRightFinderPattern: scalePoint(location.topRightFinderPattern, scale),
-    topLeftFinderPattern: scalePoint(location.topLeftFinderPattern, scale),
-    bottomLeftFinderPattern: scalePoint(location.bottomLeftFinderPattern, scale)
+    topRightCorner: transformPoint(location.topRightCorner, transform),
+    topLeftCorner: transformPoint(location.topLeftCorner, transform),
+    bottomRightCorner: transformPoint(location.bottomRightCorner, transform),
+    bottomLeftCorner: transformPoint(location.bottomLeftCorner, transform),
+    topRightFinderPattern: transformPoint(location.topRightFinderPattern, transform),
+    topLeftFinderPattern: transformPoint(location.topLeftFinderPattern, transform),
+    bottomLeftFinderPattern: transformPoint(location.bottomLeftFinderPattern, transform)
   };
 
   if (location.bottomRightAlignmentPattern) {
-    scaled.bottomRightAlignmentPattern = scalePoint(location.bottomRightAlignmentPattern, scale);
+    scaled.bottomRightAlignmentPattern = transformPoint(location.bottomRightAlignmentPattern, transform);
   }
 
   return scaled;
 }
 
-function scalePoint(point: { x: number; y: number }, scale: number): { x: number; y: number } {
+function transformPoint(point: { x: number; y: number }, transform: QrCoordinateTransform): { x: number; y: number } {
   return {
-    x: Number((point.x / scale).toFixed(2)),
-    y: Number((point.y / scale).toFixed(2))
+    x: Number((point.x / transform.scale + transform.offsetX).toFixed(2)),
+    y: Number((point.y / transform.scale + transform.offsetY).toFixed(2))
   };
 }
 
@@ -115,22 +306,41 @@ async function detectWithNativeBarcodeDetector(imageData: ImageData, currentTime
     }
 
     const detector = new Detector({ formats: ['qr_code'] });
-    const barcodes = await detector.detect(imageData);
+    const barcodes = await detector.detect(toBarcodeDetectorSource(imageData));
     return barcodes
       .filter((barcode) => barcode.rawValue)
-      .map((barcode) => ({
-        source: 'frame-qr-code',
-        kind: 'ad-read-presence',
-        startSeconds: currentTimeSeconds,
-        confidence: 0.9,
-        reason: 'Detected QR code in sampled video frame.',
-        raw: {
-          value: barcode.rawValue,
-          format: barcode.format,
-          detector: 'BarcodeDetector'
-        }
-      }));
+      .map((barcode) => {
+        const classification = classifyQrPayload(barcode.rawValue ?? '');
+        return {
+          source: 'frame-qr-code',
+          kind: 'ad-read-presence',
+          startSeconds: currentTimeSeconds,
+          confidence: classification.signal === 'sponsor-cta' ? 0.9 : LOW_SIGNAL_QR_CONFIDENCE,
+          reason: classification.signal === 'sponsor-cta'
+            ? 'Detected sponsor-like QR code in sampled video frame.'
+            : 'Detected QR code in sampled video frame, but decoded payload is low-signal.',
+          raw: {
+            value: barcode.rawValue,
+            format: barcode.format,
+            detector: 'BarcodeDetector',
+            signal: classification.signal,
+            payloadType: classification.payloadType,
+            classificationReason: classification.reason
+          }
+        };
+      });
   } catch {
     return [];
   }
+}
+
+function toBarcodeDetectorSource(imageData: ImageData): CanvasImageSource | ImageData {
+  if (typeof document === 'undefined') return imageData;
+  const canvas = document.createElement('canvas');
+  canvas.width = imageData.width;
+  canvas.height = imageData.height;
+  const context = canvas.getContext('2d');
+  if (!context) return imageData;
+  context.putImageData(imageData, 0, 0);
+  return canvas;
 }

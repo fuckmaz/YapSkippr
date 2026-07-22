@@ -9,13 +9,19 @@
   <body>
     <main>
       <div class="app-head">
-        <h1>YapSkippr</h1>
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true">Y</span>
+          <div>
+            <h1>YapSkippr</h1>
+            <span>Quietly find the ad reads.</span>
+          </div>
+        </div>
         <div class="mode-toggle" aria-label="Popup detail mode">
-          <button id="basic-mode-toggle" type="button" data-active="true">Basic</button>
-          <button id="detailed-mode-toggle" type="button">Detailed</button>
+          <button id="basic-mode-toggle" type="button" data-active="true" aria-pressed="true">Basic</button>
+          <button id="detailed-mode-toggle" type="button" aria-pressed="false">Detailed</button>
         </div>
       </div>
-      <p id="status">Open a YouTube video to scan for ad-read cues.</p>
+      <p id="status" class="intro">Open a YouTube video to scan for ad-read cues.</p>
       <section class="scan-panel" aria-label="Current scan">
         <div class="scan-panel-head">
           <div>
@@ -26,7 +32,7 @@
         </div>
         <p id="scan-message">No active scan.</p>
         <div class="scan-progress-row">
-          <div class="scan-meter" aria-hidden="true"><span id="scan-progress-bar"></span></div>
+          <div class="scan-meter" role="progressbar" aria-label="Scan progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="scan-progress-bar"></span></div>
           <span id="scan-progress-text">0%</span>
         </div>
         <dl class="scan-metrics">
@@ -73,9 +79,17 @@
               <option value="4">4s</option>
               <option value="5">5s</option>
             </select>
-            <button id="fast-scan-toggle" type="button">Start fast pre-scan</button>
+            <button id="fast-scan-toggle" type="button" disabled>Start fast pre-scan</button>
           </div>
-          <p id="fast-scan-status" class="action-status">Fast pre-scan off</p>
+          <p id="fast-scan-status" class="action-status" aria-live="polite">Fast pre-scan off</p>
+        </section>
+        <section class="auto-skip-panel" aria-label="Automatic skipping">
+          <div>
+            <strong>Auto-skip</strong>
+            <small>High-confidence segments with a detected ending only.</small>
+          </div>
+          <button id="auto-skip-toggle" type="button" data-enabled="false" aria-pressed="false" disabled>Turn on</button>
+          <p id="auto-skip-status" class="action-status" aria-live="polite">Auto-skip is off.</p>
         </section>
         <div class="section-label">Candidates</div>
         <ol id="scan-candidates" class="scan-candidates"></ol>
@@ -118,15 +132,27 @@
               <dd id="detail-updated">-</dd>
             </div>
           </dl>
+          <div id="feedback-consent-panel" class="feedback-consent-panel">
+            <label class="feedback-consent-toggle" for="feedback-consent">
+              <span>
+                <strong>Share feedback</strong>
+                <small>Off by default · sent only when you press a feedback button.</small>
+              </span>
+              <input id="feedback-consent" type="checkbox" role="switch" aria-describedby="feedback-consent-disclosure feedback-consent-status" disabled />
+            </label>
+            <p id="feedback-consent-disclosure">A report includes a stable anonymous ID, the exact video URL and ID, your selected label, detection and model metrics, evidence details, and nearby transcript text.</p>
+            <p id="feedback-consent-status" class="action-status" aria-live="polite">Feedback sharing is off.</p>
+          </div>
           <label class="endpoint-field" for="feedback-endpoint">
             Feedback API endpoint
             <span>
               <input id="feedback-endpoint" type="url" placeholder="https://example.com/api/yapskippr/feedback" />
               <button id="save-feedback-endpoint" type="button">Save</button>
             </span>
+            <small>HTTPS required. Loopback HTTP is allowed for development. Save requests access only to this endpoint origin; Frame analysis uses the separate broad access button below.</small>
           </label>
           <a id="admin-dashboard-link" class="admin-dashboard-link" href="#" target="_blank" rel="noreferrer" hidden>Open admin dashboard</a>
-          <p id="feedback-status" class="action-status" aria-live="polite">Feedback is local until an endpoint is saved.</p>
+          <p id="feedback-status" class="action-status" aria-live="polite">No feedback endpoint saved.</p>
           <label class="phrase-editor-field" for="transcript-phrase-groups">
             Transcript phrase groups
             <textarea id="transcript-phrase-groups" spellcheck="false"></textarea>
@@ -141,8 +167,11 @@
         </section>
         <p id="scan-updated" class="scan-updated">Not updated yet.</p>
       </section>
-      <section aria-label="Frame capture access">
-        <p id="permission-status">Checking frame capture access...</p>
+      <section class="permission-panel" aria-label="Frame capture access">
+        <div>
+          <strong>Frame analysis</strong>
+          <p id="permission-status" aria-live="polite">Checking frame capture access...</p>
+        </div>
         <button id="grant-access" type="button">Grant frame capture access</button>
       </section>
     </main>

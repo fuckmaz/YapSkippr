@@ -1,6 +1,6 @@
 import type { TranscriptCue } from '../../core/types';
 import { mountPlayerStatusUi } from '../../ui/player-status-ui';
-import type { StatusUiHandle, VideoPlatformAdapter } from '../adapter';
+import type { StatusUiHandle, VideoElementChange, VideoPlatformAdapter } from '../adapter';
 import { loadYouTubeTranscriptForPage } from './transcript-provider';
 
 export function createYouTubeAdapter(doc: Document = document): VideoPlatformAdapter {
@@ -32,8 +32,12 @@ export function getYouTubeVideoIdFromUrl(url: URL): string | null {
   return url.searchParams.get('v');
 }
 
-function observeVideoElementChanges(doc: Document, onChange: () => void): () => void {
-  const observer = new MutationObserver(onChange);
+function observeVideoElementChanges(doc: Document, onChange: (change: VideoElementChange) => void): () => void {
+  const observer = new MutationObserver((records) => {
+    onChange({
+      removedNodes: records.flatMap((record) => Array.from(record.removedNodes))
+    });
+  });
   observer.observe(doc.body, { childList: true, subtree: true });
   return () => observer.disconnect();
 }

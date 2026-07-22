@@ -1,8 +1,6 @@
 import type { EvidenceKind, EvidenceSource, TimedEvidence } from './types';
 import { summarizeRawEvidence } from './evidence-detail';
 
-export const SCAN_STATUS_STORAGE_KEY = 'yapskippr.scanStatus';
-
 export type ScanStatusPhase =
   | 'idle'
   | 'starting'

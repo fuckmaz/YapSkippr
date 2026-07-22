@@ -33,8 +33,10 @@
   "devDependencies": {
     "@playwright/test": "latest",
     "@types/chrome": "latest",
+    "@types/pngjs": "^6.0.5",
     "@vitest/coverage-v8": "latest",
     "playwright": "latest",
+    "pngjs": "^7.0.0",
     "typescript": "latest",
     "vite": "latest",
     "vitest": "latest",

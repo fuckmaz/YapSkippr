@@ -5,7 +5,7 @@
 <h1 align="center">YapSkippr</h1>
 
 <p align="center">
-  A local-first browser extension for detecting likely in-video sponsorship and ad-read segments on YouTube.
+  A local-first browser extension for detecting and safely skipping likely in-video sponsorship and ad-read segments on YouTube.
 </p>
 
 <p align="center">
@@ -19,7 +19,7 @@
 
 ## Overview
 
-YapSkippr analyzes the YouTube video you are currently watching and surfaces candidate ad-read segments. V1 remains detection-only: it finds likely sponsorship windows, logs progress, gives you jump actions, and accepts feedback, but it does not auto-skip or modify playback on its own.
+YapSkippr analyzes the YouTube video you are currently watching and surfaces candidate ad-read segments. Playback remains unchanged by default. If you explicitly enable Auto-skip, YapSkippr skips only high-confidence candidates that have a detected end boundary, handles each segment once per video, and exposes an immediate Undo action beside the player.
 
 The extension combines frame analysis and transcript signals so future versions can evolve toward more accurate, service-aware ad-read detection without tying the core logic to YouTube forever.
 
@@ -41,6 +41,7 @@ When evidence is found, YapSkippr fuses the signals into candidate segments and 
 - Live popup dashboard with scan phase, sampled frame count, video timing, evidence counts, candidate segments, and recent activity.
 - Basic and detailed popup modes. Detailed mode shows raw evidence history, source-specific activity, and feedback controls for correct, wrong, wrong timing, and missing context reports.
 - Fast pre-scan mode that keeps analyzing the current YouTube tab every 1-5 seconds after the popup closes.
+- Default-off safe Auto-skip for high-confidence segments with detected endings, with per-skip Undo and replay suppression.
 - Candidate jump actions for quickly seeking to detected segment start times.
 - Lightweight status block mounted near the YouTube player with evidence counts and clickable candidate timecodes.
 - Console logging for lower-level debugging while the detector is still evolving.
@@ -58,6 +59,7 @@ YouTube page
   -> detectors extract transcript, progress-bar, QR, and visible-link evidence
   -> evidence fusion creates candidate ad-read segments
   -> optional promoted model recalibrates candidate confidence
+  -> default-off skip controller may seek past a qualified bounded segment and offers Undo
   -> popup and page UI receive live status snapshots from extension storage
   -> reviewed feedback trains the next JSON model artifact on your server
 ```
@@ -132,7 +134,7 @@ npm run typecheck:admin
 npm run typecheck:server
 ```
 
-`npm run test:e2e` rebuilds the installable Chrome and Firefox artifacts before checking generated manifests, bundled entrypoints, and packaged zip/xpi contents.
+`npm run test:e2e` rebuilds the installable Chrome and Firefox artifacts before checking generated manifests, bundled entrypoints, packaged zip/xpi contents, and the Chrome MV3 content script in a deterministic YouTube-style playback fixture. The runtime test covers opt-in behavior, pause safety, automatic seeking, Undo replay suppression, and video-element replacement.
 
 ### Transcript Phrase Tuning
 
@@ -224,13 +226,13 @@ server/
 
 YapSkippr is local-first by default. Frame samples and video screenshots are not uploaded. If you configure the feedback endpoint, the extension sends structured feedback payloads containing an anonymous locally generated client ID, the video URL, timecode, occurrence summary, candidate features, evidence metadata, transcript context, and model metadata.
 
-The extension declares broad `<all_urls>` host access because browser APIs require either `<all_urls>` or `activeTab` for automatic `tabs.captureVisibleTab()` frame sampling. The content script itself is scoped to YouTube pages, and captured frames are processed locally.
+The extension requires host access only for YouTube. Broad `<all_urls>` access is optional and requested from the popup when you enable cross-origin frame capture; feedback endpoint setup separately requests access only to that endpoint's origin. Captured frames are processed locally.
 
 If Chrome reports `Either the '<all_urls>' or 'activeTab' permission is required`, open the YapSkippr popup, grant frame capture access, and reload the YouTube tab.
 
 ## Limitations
 
-- V1 only detects likely ad-read segments; it does not auto-skip.
+- Auto-skip deliberately ignores open-ended, low-confidence, inferred-end, excessively short, and excessively long candidates. Manual jump actions remain available for every displayed candidate.
 - YouTube is the only supported video platform right now.
 - Visible-link detection depends on the browser's native text detection API. Browsers without that API simply skip the visible-link cue.
 - Firefox builds are available, but Chrome and Chromium are the primary target for the first implementation pass.
@@ -238,7 +240,8 @@ If Chrome reports `Either the '<all_urls>' or 'activeTab' permission is required
 ## Roadmap
 
 - Improve candidate scoring with reviewed feedback from more real-world sample videos.
-- Add richer on-player visualization for candidate windows.
-- Add optional skip controls once detection quality is high enough.
+- Calibrate skip confidence and boundary quality against a reviewed real-world holdout corpus.
+- Add richer but still minimal on-player visualization for candidate windows and skip history.
+- Add per-channel skip preferences after enough reviewed feedback exists to support them safely.
 - Introduce more platform adapters for additional streaming services.
 - Expand model training beyond candidate ranking into boundary-specific timing improvements.

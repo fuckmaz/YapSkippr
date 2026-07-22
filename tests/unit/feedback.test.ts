@@ -2,8 +2,10 @@ import {
   OCCURRENCE_FEEDBACK_ACTIONS,
   OCCURRENCE_FEEDBACK_MODEL_SOURCE_VALUES,
   OCCURRENCE_FEEDBACK_VALUES,
+  createFeedbackEndpointOriginPermission,
   createOccurrenceFeedbackPayload,
-  deriveAdminDashboardUrl
+  deriveAdminDashboardUrl,
+  normalizeFeedbackEndpoint
 } from '../../src/core/feedback';
 
 test('defines popup feedback actions for every supported occurrence feedback value', () => {
@@ -131,9 +133,44 @@ test('derives an admin dashboard URL from a saved feedback endpoint', () => {
   expect(deriveAdminDashboardUrl('https://example.com/custom/path')).toBe('https://example.com/admin');
 });
 
+test('accepts secure feedback endpoints and explicit loopback HTTP development endpoints', () => {
+  expect(normalizeFeedbackEndpoint('https://feedback.example.com/api/v1/feedback')).toBe(
+    'https://feedback.example.com/api/v1/feedback'
+  );
+  expect(normalizeFeedbackEndpoint('http://localhost:8787/api/v1/feedback')).toBe(
+    'http://localhost:8787/api/v1/feedback'
+  );
+  expect(normalizeFeedbackEndpoint('http://127.0.0.1:8787/api/v1/feedback')).toBe(
+    'http://127.0.0.1:8787/api/v1/feedback'
+  );
+  expect(normalizeFeedbackEndpoint('http://[::1]:8787/api/v1/feedback')).toBe(
+    'http://[::1]:8787/api/v1/feedback'
+  );
+});
+
+test('rejects remote HTTP, credentials, and lookalike loopback hosts', () => {
+  expect(normalizeFeedbackEndpoint('http://feedback.example.com/api/v1/feedback')).toBeNull();
+  expect(normalizeFeedbackEndpoint('https://user:secret@feedback.example.com/api/v1/feedback')).toBeNull();
+  expect(normalizeFeedbackEndpoint('http://localhost.example.com/api/v1/feedback')).toBeNull();
+  expect(normalizeFeedbackEndpoint('http://127.0.0.2/api/v1/feedback')).toBeNull();
+  expect(normalizeFeedbackEndpoint('http://localhost./api/v1/feedback')).toBeNull();
+});
+
+test('creates a least-privilege optional host request for the endpoint origin', () => {
+  expect(createFeedbackEndpointOriginPermission('https://feedback.example.com:8443/api/v1/feedback')).toBe(
+    'https://feedback.example.com:8443/*'
+  );
+  expect(createFeedbackEndpointOriginPermission('http://[::1]:8787/api/v1/feedback')).toBe(
+    'http://[::1]:8787/*'
+  );
+  expect(createFeedbackEndpointOriginPermission('http://feedback.example.com/api/v1/feedback')).toBeNull();
+});
+
 test('does not derive an admin dashboard URL from invalid feedback endpoints', () => {
   expect(deriveAdminDashboardUrl('')).toBeNull();
   expect(deriveAdminDashboardUrl(null)).toBeNull();
   expect(deriveAdminDashboardUrl('ftp://feedback.example.com/api/v1/feedback')).toBeNull();
+  expect(deriveAdminDashboardUrl('http://feedback.example.com/api/v1/feedback')).toBeNull();
+  expect(deriveAdminDashboardUrl('https://user:secret@feedback.example.com/api/v1/feedback')).toBeNull();
   expect(deriveAdminDashboardUrl('not a url')).toBeNull();
 });

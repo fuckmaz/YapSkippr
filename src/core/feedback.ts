@@ -77,10 +77,19 @@ export function normalizeFeedbackEndpoint(value: string): string | null {
 
   try {
     const url = new URL(trimmed);
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url.toString() : null;
+    if (url.username || url.password) return null;
+    if (url.protocol === 'https:') return url.toString();
+    if (url.protocol === 'http:' && isLoopbackHostname(url.hostname)) return url.toString();
+    return null;
   } catch {
     return null;
   }
+}
+
+export function createFeedbackEndpointOriginPermission(value: string): string | null {
+  const normalized = normalizeFeedbackEndpoint(value);
+  if (!normalized) return null;
+  return `${new URL(normalized).origin}/*`;
 }
 
 export function deriveAdminDashboardUrl(value: string | null | undefined): string | null {
@@ -90,4 +99,8 @@ export function deriveAdminDashboardUrl(value: string | null | undefined): strin
 
   const endpoint = new URL(normalized);
   return new URL('/admin', endpoint.origin).toString();
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 }

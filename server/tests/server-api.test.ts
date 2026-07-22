@@ -865,6 +865,149 @@ describe('YapSkippr server API', () => {
     await app.close();
   });
 
+  test('exports model artifacts and evaluations as protected JSON attachments', async () => {
+    const repository = createMemoryRepository();
+    const promotedModel = modelArtifact('model-promoted', '2026.07.01.000001', { accuracy: 0.72, f1: 0.68, auc: 0.74 });
+    const candidateModel = modelArtifact('model-candidate', '2026.07.01.000002', { accuracy: 0.81, f1: 0.73, auc: 0.79 });
+    await repository.saveModel(promotedModel);
+    await repository.saveModel(candidateModel);
+    await repository.promoteModel('model-promoted');
+    const app = await buildServer({ adminToken: 'secret', repository });
+
+    const blockedArtifact = await app.inject({ method: 'GET', url: '/admin/models/model-candidate/artifact' });
+    const blockedEvaluationExport = await app.inject({ method: 'GET', url: '/admin/models/model-candidate/evaluation/export' });
+    expect(blockedArtifact.statusCode).toBe(401);
+    expect(blockedEvaluationExport.statusCode).toBe(401);
+
+    const missingArtifact = await app.inject({
+      method: 'GET',
+      url: '/admin/models/model-missing/artifact',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    expect(missingArtifact.statusCode).toBe(404);
+    expect(missingArtifact.json()).toMatchObject({ ok: false, error: 'Model not found.' });
+
+    const artifact = await app.inject({
+      method: 'GET',
+      url: '/admin/models/model-candidate/artifact',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    expect(artifact.statusCode).toBe(200);
+    expect(artifact.headers['content-type']).toEqual(expect.stringContaining('application/json'));
+    expect(artifact.headers['content-disposition']).toBe('attachment; filename="yapskippr-model-model-candidate.json"');
+    expect(artifact.json()).toEqual(candidateModel);
+
+    const evaluation = await app.inject({
+      method: 'GET',
+      url: '/admin/models/model-candidate/evaluation',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    const evaluationExport = await app.inject({
+      method: 'GET',
+      url: '/admin/models/model-candidate/evaluation/export',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    expect(evaluationExport.statusCode).toBe(200);
+    expect(evaluationExport.headers['content-type']).toEqual(expect.stringContaining('application/json'));
+    expect(evaluationExport.headers['content-disposition']).toBe('attachment; filename="yapskippr-model-model-candidate-evaluation.json"');
+    expect(evaluationExport.json()).toEqual(evaluation.json());
+    expect(evaluationExport.json()).toMatchObject({
+      modelId: 'model-candidate',
+      promotedComparison: {
+        promotedModelId: 'model-promoted',
+        metricDeltas: {
+          accuracy: 0.09,
+          f1: 0.05,
+          auc: 0.05
+        }
+      }
+    });
+
+    await app.close();
+  });
+
+  test('exports the training dataset with readiness metadata as a protected JSON attachment', async () => {
+    const app = await buildServer({ adminToken: 'secret' });
+
+    const positive = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'dataset-export-positive',
+        videoId: 'video-export-a',
+        source: 'transcript'
+      })
+    });
+    const negative = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'dataset-export-negative',
+        videoId: 'video-export-b',
+        source: 'frame-visible-link',
+        feedback: 'false_positive'
+      })
+    });
+
+    for (const [response, label] of [
+      [positive, 'positive'],
+      [negative, 'false_positive']
+    ] as const) {
+      expect(response.statusCode).toBe(201);
+      const review = await app.inject({
+        method: 'POST',
+        url: `/admin/feedback/${response.json().feedbackId}/review`,
+        headers: { 'x-admin-token': 'secret' },
+        payload: { label }
+      });
+      expect(review.statusCode).toBe(200);
+    }
+
+    const blocked = await app.inject({ method: 'GET', url: '/admin/training-dataset/export' });
+    expect(blocked.statusCode).toBe(401);
+
+    const exported = await app.inject({
+      method: 'GET',
+      url: '/admin/training-dataset/export',
+      headers: { 'x-admin-token': 'secret' }
+    });
+
+    expect(exported.statusCode).toBe(200);
+    expect(exported.headers['content-type']).toEqual(expect.stringContaining('application/json'));
+    expect(exported.headers['content-disposition']).toBe('attachment; filename="yapskippr-training-dataset.json"');
+    expect(Number.isNaN(Date.parse(exported.json().generatedAt))).toBe(false);
+    expect(exported.json()).toMatchObject({
+      featureSchemaVersion: 2,
+      readiness: {
+        featureSchemaVersion: 2,
+        totalExamples: 2,
+        compatibleExamples: 2,
+        incompatibleExamples: 0,
+        positiveExamples: 1,
+        negativeExamples: 1,
+        ready: true,
+        blocker: null
+      },
+      items: expect.arrayContaining([
+        expect.objectContaining({
+          occurrenceId: 'dataset-export-positive',
+          reviewLabel: 'positive',
+          trainingLabel: 1,
+          trainable: true
+        }),
+        expect.objectContaining({
+          occurrenceId: 'dataset-export-negative',
+          reviewLabel: 'false_positive',
+          trainingLabel: 0,
+          trainable: true
+        })
+      ])
+    });
+    expect(exported.json().items).toHaveLength(2);
+
+    await app.close();
+  });
+
   test('rejects rollback for models that are not currently promoted', async () => {
     const repository = createMemoryRepository();
     await repository.saveModel(modelArtifact('model-a', '2026.07.01.000001'));

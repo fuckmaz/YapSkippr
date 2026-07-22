@@ -9,6 +9,7 @@ import { feedbackPayloadV2Schema } from './feedback/schema.js';
 import { buildTrainingDatasetRows } from './model/training-dataset.js';
 import { trainLogisticModel } from './model/trainer.js';
 import { getCompatibleTrainingExamples, summarizeTrainingReadiness } from './model/training-readiness.js';
+import type { CandidateModelArtifact } from './model/types.js';
 import { createMemoryRepository } from './store/memory.js';
 import { createPostgresRepository } from './store/postgres.js';
 import type { ReviewLabel, YapSkipprRepository } from './store/types.js';
@@ -117,6 +118,16 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
   app.get('/admin/api/training-dataset', { preHandler: requireAdmin(adminToken) }, async () => ({
     items: buildTrainingDatasetRows(await repository.listFeedback())
   }));
+  app.get('/admin/training-dataset/export', { preHandler: requireAdmin(adminToken) }, async (_request, reply) => {
+    const [feedback, examples] = await Promise.all([repository.listFeedback(), repository.listTrainingExamples()]);
+    const readiness = summarizeTrainingReadiness(examples);
+    return sendJsonAttachment(reply, 'yapskippr-training-dataset.json', {
+      generatedAt: new Date().toISOString(),
+      featureSchemaVersion: readiness.featureSchemaVersion,
+      readiness,
+      items: buildTrainingDatasetRows(feedback)
+    });
+  });
 
   app.post('/admin/feedback/:id/review', { preHandler: requireAdmin(adminToken) }, async (request, reply) => {
     const parsed = reviewSchema.safeParse(request.body);
@@ -156,22 +167,31 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     return { ok: true, model };
   });
 
+  app.get('/admin/models/:id/artifact', { preHandler: requireAdmin(adminToken) }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const model = await repository.getModel(id);
+    if (!model) return reply.status(404).send({ ok: false, error: 'Model not found.' });
+    return sendJsonAttachment(reply, `yapskippr-model-${attachmentSafeName(id)}.json`, model);
+  });
+
   app.get('/admin/models/:id/evaluation', { preHandler: requireAdmin(adminToken) }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const model = await repository.getModel(id);
     if (!model) return reply.status(404).send({ ok: false, error: 'Model not found.' });
     const promoted = await repository.getPromotedModel();
-    return {
-      modelId: id,
-      metrics: model.metrics,
-      trainingSetSummary: model.trainingSetSummary,
-      promotedComparison: promoted
-        ? {
-            promotedModelId: promoted.modelId,
-            metricDeltas: compareModelMetrics(model.metrics, promoted.metrics)
-          }
-        : null
-    };
+    return buildModelEvaluationReport(id, model, promoted);
+  });
+
+  app.get('/admin/models/:id/evaluation/export', { preHandler: requireAdmin(adminToken) }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const model = await repository.getModel(id);
+    if (!model) return reply.status(404).send({ ok: false, error: 'Model not found.' });
+    const promoted = await repository.getPromotedModel();
+    return sendJsonAttachment(
+      reply,
+      `yapskippr-model-${attachmentSafeName(id)}-evaluation.json`,
+      buildModelEvaluationReport(id, model, promoted)
+    );
   });
 
   app.get('/admin', async (request, reply) => {
@@ -289,6 +309,31 @@ function positiveIntegerFromEnv(name: string, fallback: number): number {
   if (raw === undefined) return fallback;
   const parsed = Number(raw);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function sendJsonAttachment(reply: FastifyReply, filename: string, payload: unknown): FastifyReply {
+  return reply
+    .type('application/json')
+    .header('content-disposition', `attachment; filename="${filename}"`)
+    .send(payload);
+}
+
+function attachmentSafeName(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]/g, '_');
+}
+
+function buildModelEvaluationReport(modelId: string, model: CandidateModelArtifact, promoted: CandidateModelArtifact | null) {
+  return {
+    modelId,
+    metrics: model.metrics,
+    trainingSetSummary: model.trainingSetSummary,
+    promotedComparison: promoted
+      ? {
+          promotedModelId: promoted.modelId,
+          metricDeltas: compareModelMetrics(model.metrics, promoted.metrics)
+        }
+      : null
+  };
 }
 
 function compareModelMetrics(metrics: Record<string, number>, baseline: Record<string, number>): Record<string, number> {
