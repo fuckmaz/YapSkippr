@@ -50,6 +50,17 @@ test('classifies plain-text QR payloads as low-signal evidence', () => {
     signal: 'low-signal',
     payloadType: 'plain-text'
   });
+  expect(classifyQrPayload('HELLO')).toMatchObject({
+    signal: 'low-signal',
+    payloadType: 'plain-text'
+  });
+});
+
+test('does not classify promotional-looking URL substrings as sponsor tokens', () => {
+  expect(classifyQrPayload('https://sponsorblock.example/docs')).toMatchObject({
+    signal: 'low-signal',
+    payloadType: 'url'
+  });
 });
 
 test('returns QR evidence from jsqr fallback results', async () => {

@@ -84,7 +84,7 @@ The benchmark uses minimum recall and precision gates, currently 0.90 recall and
 - transcript plus progress-bar corroboration;
 - multiple ad reads in one video;
 - QR-only open detections that remain review-only;
-- negated sponsor language, ordinary call-to-action wording, end-cue-only transitions, and uncorroborated progress geometry as hard negatives.
+- negated sponsor language, ordinary call-to-action wording, generic transcript/frame URLs, end-cue-only transitions, and uncorroborated progress geometry as hard negatives.
 
 Run both visual and segment quality gates with:
 

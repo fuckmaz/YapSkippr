@@ -1,5 +1,9 @@
 import jsQR, { type QRCode } from 'jsqr';
 import type { TimedEvidence } from '../types';
+import {
+  findPromotionalUrlSemantic,
+  parseHttpUrlLike
+} from './promotional-signal';
 
 interface BarcodeDetectorLike {
   detect(image: CanvasImageSource | ImageData): Promise<Array<{ rawValue?: string; format?: string }>>;
@@ -105,7 +109,7 @@ function createQrEvidence(
 export function classifyQrPayload(value: string): QrPayloadClassification {
   const normalized = value.trim();
   if (isUrlLikeQrPayload(normalized)) {
-    const sponsorSemantics = findSponsorUrlSemantics(normalized);
+    const sponsorSemantics = findPromotionalUrlSemantic(normalized);
     return {
       signal: sponsorSemantics ? 'sponsor-cta' : 'low-signal',
       payloadType: 'url',
@@ -130,35 +134,8 @@ export function classifyQrPayload(value: string): QrPayloadClassification {
   };
 }
 
-function findSponsorUrlSemantics(value: string): string | null {
-  const parsed = parseUrlLikePayload(value);
-  if (!parsed) return null;
-
-  const sponsorTokens = /(?:^|[._~!$&'()*+,;=:@/?#-])(?:affiliate|bonus|checkout|claim|coupon|deal|discount|gift|offer|partner|promo|redeem|shop|sponsor|subscribe|trial)(?:$|[._~!$&'()*+,;=:@/?#-])/i;
-  const searchable = `${parsed.hostname}${parsed.pathname}${parsed.search}${parsed.hash}`;
-  return searchable.match(sponsorTokens)?.[0]?.replace(/^[^a-z0-9]+|[^a-z0-9]+$/gi, '').toLowerCase() ?? null;
-}
-
-function parseUrlLikePayload(value: string): URL | null {
-  try {
-    return new URL(value);
-  } catch {
-    try {
-      return new URL(`https://${value}`);
-    } catch {
-      return null;
-    }
-  }
-}
-
 function isUrlLikeQrPayload(value: string): boolean {
-  if (!value) return false;
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
-  } catch {
-    return /^(?:www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?:[/?#:]|$)/i.test(value);
-  }
+  return parseHttpUrlLike(value) !== null;
 }
 
 function isPromoCodeLikeQrPayload(value: string): boolean {

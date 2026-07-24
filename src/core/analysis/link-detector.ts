@@ -1,4 +1,5 @@
 import type { TimedEvidence, TranscriptCue } from '../types';
+import { classifyPromotionalLinkContext } from './promotional-signal';
 
 interface NativeDetectedText {
   rawValue?: string;
@@ -12,21 +13,19 @@ interface NativeTextDetector {
 
 type NativeTextDetectorConstructor = new () => NativeTextDetector;
 
-const LINK_TLDS = [
-  'ai', 'app', 'at', 'be', 'biz', 'cc', 'ch', 'co', 'com', 'de', 'dev', 'edu', 'es', 'eu',
-  'example', 'fr', 'gg', 'io', 'it', 'ly', 'me', 'net', 'nl', 'org', 'shop', 'store', 'test',
-  'tv', 'uk', 'us'
-] as const;
-const LINK_PATTERN = new RegExp(
-  `\\b(?:https?:\\/\\/)?(?:www\\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+(?:${[...LINK_TLDS].sort((a, b) => b.length - a.length).join('|')})(?:\\/[^\\s<>"']+)?`,
-  'gi'
-);
+const LINK_PATTERN =
+  /\b(?:https?:\/\/)?(?:www\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:[a-z]{2,24}|xn--[a-z0-9-]{2,59})(?:[/?#][^\s<>"']*)?/gi;
 
 interface TextLinkEvidenceOptions {
   detector?: 'TextDetector' | 'transcript';
-  confidence?: number;
-  reason?: string;
+  sponsorConfidence?: number;
+  lowSignalConfidence?: number;
 }
+
+const FRAME_SPONSOR_LINK_CONFIDENCE = 0.72;
+const FRAME_LOW_SIGNAL_LINK_CONFIDENCE = 0.24;
+const TRANSCRIPT_SPONSOR_LINK_CONFIDENCE = 0.58;
+const TRANSCRIPT_LOW_SIGNAL_LINK_CONFIDENCE = 0.18;
 
 export async function detectVisibleLinkCue(
   imageData: ImageData,
@@ -48,8 +47,7 @@ export async function detectVisibleLinkCue(
     const detections = await new detector().detect(canvas);
     const text = detections.map(getDetectedText).filter(Boolean).join(' ');
     return detectVisibleLinkCueFromText(text, currentTimeSeconds, {
-      detector: 'TextDetector',
-      reason: 'Detected a visible sponsor link in the sampled video frame.'
+      detector: 'TextDetector'
     });
   } catch {
     return [];
@@ -67,17 +65,26 @@ export function detectVisibleLinkCueFromText(
 ): TimedEvidence[] {
   const links = extractHttpLinks(text);
   if (links.length === 0) return [];
+  const classification = classifyPromotionalLinkContext(text, links);
+  const isSponsorSignal = classification.signal === 'sponsor-cta';
 
   return [
     {
       source: 'frame-visible-link',
       kind: 'ad-read-presence',
       startSeconds: currentTimeSeconds,
-      confidence: options.confidence ?? 0.72,
-      reason: options.reason ?? 'Detected visible HTTP link in sampled video frame.',
+      confidence: isSponsorSignal
+        ? options.sponsorConfidence ?? FRAME_SPONSOR_LINK_CONFIDENCE
+        : options.lowSignalConfidence ?? FRAME_LOW_SIGNAL_LINK_CONFIDENCE,
+      reason: isSponsorSignal
+        ? 'Detected sponsor-like link in video text.'
+        : 'Detected URL in video text, but it has no promotional semantics.',
       raw: {
         links,
         text,
+        signal: classification.signal,
+        classificationReason: classification.reason,
+        matchedSemantic: classification.matchedSemantic,
         ...(options.detector ? { detector: options.detector } : {})
       }
     }
@@ -87,8 +94,8 @@ export function detectVisibleLinkCueFromText(
 export function detectTranscriptLinkCues(cues: readonly TranscriptCue[]): TimedEvidence[] {
   return cues.flatMap((cue) => detectVisibleLinkCueFromText(cue.text, cue.startSeconds, {
     detector: 'transcript',
-    confidence: 0.58,
-    reason: 'Detected a sponsor link in YouTube transcript text.'
+    sponsorConfidence: TRANSCRIPT_SPONSOR_LINK_CONFIDENCE,
+    lowSignalConfidence: TRANSCRIPT_LOW_SIGNAL_LINK_CONFIDENCE
   }));
 }
 

@@ -36,7 +36,7 @@ test('matches duplicate detections one-to-one instead of inflating recall', () =
           startSeconds: 100,
           confidence: 0.72,
           reason: 'first visible link',
-          raw: { text: 'https://sponsor.example/offer-a' }
+          raw: { text: 'https://sponsor.example/offer-a', signal: 'sponsor-cta' }
         },
         {
           source: 'frame-visible-link',
@@ -44,7 +44,7 @@ test('matches duplicate detections one-to-one instead of inflating recall', () =
           startSeconds: 130,
           confidence: 0.72,
           reason: 'second visible link',
-          raw: { text: 'https://sponsor.example/offer-b' }
+          raw: { text: 'https://sponsor.example/offer-b', signal: 'sponsor-cta' }
         }
       ],
       expectedSegments: [{ startSeconds: 100, endSeconds: 160 }],

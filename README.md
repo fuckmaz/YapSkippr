@@ -31,7 +31,7 @@ YapSkippr now also includes a self-improving, non-LLM recognition loop. The exte
 | --- | --- | --- |
 | Progress bars | Sampled video frames | Catches creator-made sponsor timers, overlays, and visual ad-read UI. |
 | QR codes | Sampled video frames | Flags common sponsor call-to-action visuals. |
-| Visible HTTP(S) links | Sampled video frames | Uses native browser text detection when available to find displayed sponsor links. |
+| Visible HTTP(S) links | Sampled video frames and transcript fallback | Classifies URL paths and nearby calls to action; generic documentation or informational links stay low-signal. |
 | Transcript cues | YouTube caption tracks | Looks for spoken phrases that suggest an ad-read starts or ends. |
 
 When evidence is found, YapSkippr fuses the signals into candidate segments and shows the result in the extension popup and near the YouTube player.
@@ -51,6 +51,7 @@ When evidence is found, YapSkippr fuses the signals into candidate segments and 
 - First-class missed-segment feedback that snapshots live detector evidence and nearby transcript context. Zero-evidence reports remain reviewable but are intentionally excluded from confidence training.
 - Idempotent feedback ingestion keyed by anonymous client, video occurrence, boundaries, and judgment. Transport retries return the original feedback ID instead of inflating review and training counts.
 - Admin overview reporting for merged retry attempts, making duplicate protection visible in production.
+- Shared promotional-signal classification for QR payloads and visible links, with modern-domain detection and same-channel transcript fallback protection.
 - Chrome and Chromium support first, with a Firefox build available for local testing.
 
 ## How It Works

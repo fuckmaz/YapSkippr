@@ -119,6 +119,42 @@ export const SEGMENT_DETECTION_CORPUS: readonly SegmentBenchmarkCase[] = [
     provenance: SELF_AUTHORED_PROVENANCE
   },
   {
+    id: 'negative-generic-transcript-links',
+    title: 'Ordinary transcript URLs do not impersonate independent frame evidence',
+    durationSeconds: 480,
+    transcriptCues: [
+      cue(70, 'Visit docs.example/guide for the configuration steps.'),
+      cue(80, 'Check out source.example/project to inspect the implementation.')
+    ],
+    expectedSegments: [],
+    tags: ['negative', 'transcript', 'visible-link', 'same-channel'],
+    provenance: SELF_AUTHORED_PROVENANCE
+  },
+  {
+    id: 'negative-generic-frame-link',
+    title: 'An informational on-screen URL remains low-signal',
+    durationSeconds: 420,
+    transcriptCues: [],
+    supportingEvidence: [
+      {
+        source: 'frame-visible-link',
+        kind: 'ad-read-presence',
+        startSeconds: 90,
+        confidence: 0.24,
+        reason: 'Detected URL in video text, but it has no promotional semantics.',
+        raw: {
+          links: ['https://docs.example/guide'],
+          text: 'Documentation: docs.example/guide',
+          signal: 'low-signal',
+          detector: 'TextDetector'
+        }
+      }
+    ],
+    expectedSegments: [],
+    tags: ['negative', 'visible-link', 'frame-text', 'low-signal'],
+    provenance: SELF_AUTHORED_PROVENANCE
+  },
+  {
     id: 'negative-return-transition',
     title: 'A casual return phrase without a sponsor start is harmless',
     durationSeconds: 360,

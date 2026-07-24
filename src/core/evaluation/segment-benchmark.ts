@@ -1,4 +1,5 @@
 import { buildSegmentCandidates } from '../analysis/evidence-fusion';
+import { detectTranscriptLinkCues } from '../analysis/link-detector';
 import {
   analyzeTranscriptCues,
   type TranscriptPhraseGroup
@@ -106,6 +107,7 @@ export function runHeuristicSegmentBenchmark(
     );
     const detectedSegments = buildSegmentCandidates([
       ...transcriptEvidence,
+      ...detectTranscriptLinkCues(benchmarkCase.transcriptCues),
       ...(benchmarkCase.supportingEvidence ?? [])
     ]);
     const matches = matchSegments(benchmarkCase.expectedSegments, detectedSegments, resolvedOptions);

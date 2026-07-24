@@ -55,21 +55,35 @@ function buildPresenceOnlyCandidates(presenceEvidence: TimedEvidence[]): Segment
  * common in ordinary content to form a segment by repetition alone.
  */
 function isEligiblePresenceOnlyGroup(group: readonly TimedEvidence[]): boolean {
-  const sources = new Set(group.map((item) => item.source));
-  if (sources.size > 1) return true;
+  if (group.some(isSponsorSemanticFrameEvidence)) return true;
 
-  const source = group[0]?.source;
-  if (source === 'frame-visible-link') return true;
-  if (source === 'frame-qr-code') {
-    return group.some((item) => !isGenericQrEvidence(item)) || group.length >= 3;
-  }
-  return false;
+  const channels = new Set(group.map(evidenceChannel));
+  if (channels.size > 1) return true;
+
+  return group.length >= 3 && group.every(isGenericQrEvidence);
 }
 
 function isGenericQrEvidence(evidence: TimedEvidence): boolean {
   if (evidence.source !== 'frame-qr-code') return false;
   if (!isRecord(evidence.raw)) return true;
   return readStringProperty(evidence.raw, 'signal') !== 'sponsor-cta';
+}
+
+function isSponsorSemanticFrameEvidence(evidence: TimedEvidence): boolean {
+  if (evidence.source !== 'frame-qr-code' && evidence.source !== 'frame-visible-link') return false;
+  return isRecord(evidence.raw) && readStringProperty(evidence.raw, 'signal') === 'sponsor-cta';
+}
+
+function evidenceChannel(evidence: TimedEvidence): string {
+  if (evidence.source === 'transcript') return 'transcript';
+  if (
+    evidence.source === 'frame-visible-link'
+    && isRecord(evidence.raw)
+    && readStringProperty(evidence.raw, 'detector') === 'transcript'
+  ) {
+    return 'transcript';
+  }
+  return evidence.source;
 }
 
 function buildCandidateFromSeed(seed: TimedEvidence, allEvidence: TimedEvidence[]): SegmentCandidate {

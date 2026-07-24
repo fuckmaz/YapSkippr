@@ -221,20 +221,62 @@ test('never surfaces detector-realistic moving progress output without corrobora
   expect(candidates).toEqual([]);
 });
 
-test('creates an open candidate from visible link evidence', () => {
+test('creates an open candidate from sponsor-semantic visible link evidence', () => {
   const candidates = buildSegmentCandidates([
     evidence({
       source: 'frame-visible-link',
       kind: 'ad-read-presence',
       startSeconds: 55,
       confidence: 0.72,
-      reason: 'visible link'
+      reason: 'visible link',
+      raw: { signal: 'sponsor-cta', links: ['https://brand.example/offer'] }
     })
   ]);
 
   expect(candidates).toHaveLength(1);
   expect(candidates[0]?.startSeconds).toBe(55);
   expect(candidates[0]?.confidence).toBeGreaterThan(0.4);
+});
+
+test('does not surface a generic visible URL without promotional semantics', () => {
+  const candidates = buildSegmentCandidates([
+    evidence({
+      source: 'frame-visible-link',
+      kind: 'ad-read-presence',
+      startSeconds: 55,
+      confidence: 0.24,
+      reason: 'generic visible link',
+      raw: { signal: 'low-signal', links: ['https://docs.example/guide'] }
+    })
+  ]);
+
+  expect(candidates).toEqual([]);
+});
+
+test('does not count transcript URL fallback as an independent evidence channel', () => {
+  const candidates = buildSegmentCandidates([
+    evidence({
+      source: 'transcript',
+      kind: 'ad-read-presence',
+      startSeconds: 55,
+      confidence: 0.5,
+      reason: 'visit'
+    }),
+    evidence({
+      source: 'frame-visible-link',
+      kind: 'ad-read-presence',
+      startSeconds: 55,
+      confidence: 0.18,
+      reason: 'generic transcript URL',
+      raw: {
+        signal: 'low-signal',
+        detector: 'transcript',
+        links: ['https://docs.example/guide']
+      }
+    })
+  ]);
+
+  expect(candidates).toEqual([]);
 });
 
 test('defaults a high-confidence open candidate to two minutes', () => {
