@@ -1718,7 +1718,8 @@ function sourceLabel(source: string): string {
     transcript: 'Transcript',
     'frame-visible-link': 'Visible links',
     'frame-qr-code': 'QR codes',
-    'frame-progress-bar': 'Progress bars'
+    'frame-progress-bar': 'Progress bars',
+    'user-missed-segment': 'Missed segments'
   };
   return labels[source] ?? source.replace(/-/g, ' ');
 }

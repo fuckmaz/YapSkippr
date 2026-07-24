@@ -21,6 +21,11 @@ import { analyzeTranscriptCues, parseTranscriptPhraseGroups, type TranscriptPhra
 import { AUTO_SKIP_ENABLED_STORAGE_KEY, TRANSCRIPT_PHRASE_GROUPS_STORAGE_KEY } from '../../core/extension-settings';
 import { createLatestAsyncControl } from '../../core/latest-async-control';
 import {
+  createMissedSegmentContext,
+  MAX_MISSED_SEGMENT_DURATION_SECONDS,
+  type MissedSegmentContext
+} from '../../core/missed-segment';
+import {
   createFallbackActiveCandidateModel,
   DEFAULT_MODEL_FETCH_TIMEOUT_MS,
   loadActiveCandidateModel,
@@ -53,6 +58,7 @@ const logger = createLogger('youtube-content');
 const SEEK_TO_MESSAGE_TYPE = 'YAPSKIPPR_SEEK_TO';
 const FAST_SCAN_MESSAGE_TYPE = 'YAPSKIPPR_SET_FAST_SCAN';
 const SCAN_CAPABILITY_MESSAGE_TYPE = 'YAPSKIPPR_GET_SCAN_CAPABILITY';
+const MISSED_SEGMENT_CONTEXT_MESSAGE_TYPE = 'YAPSKIPPR_GET_MISSED_SEGMENT_CONTEXT';
 const CLAIM_SCAN_STATUS_MESSAGE_TYPE = 'YAPSKIPPR_CLAIM_SCAN_STATUS';
 const UPDATE_SCAN_STATUS_MESSAGE_TYPE = 'YAPSKIPPR_UPDATE_SCAN_STATUS';
 const NORMAL_SAMPLE_INTERVAL_MS = 5000;
@@ -67,6 +73,12 @@ interface FastScanRequest {
   type?: string;
   enabled?: boolean;
   intervalSeconds?: number;
+}
+
+interface MissedSegmentContextRequest {
+  type?: string;
+  startSeconds?: number;
+  endSeconds?: number;
 }
 
 interface SeekToResponse {
@@ -100,11 +112,17 @@ interface ScanCapabilityResponse {
   error?: string;
 }
 
+interface MissedSegmentContextResponse extends Partial<MissedSegmentContext> {
+  ok: boolean;
+  error?: string;
+}
+
 interface ActiveScanControl {
   isReady(): boolean;
   stop(): void;
   setFastScan(enabled: boolean, intervalSeconds: number): FastScanResponse;
   setAutoSkip(enabled: boolean): void;
+  captureMissedSegment(startSeconds: number, endSeconds: number): MissedSegmentContextResponse;
 }
 
 export default defineContentScript({
@@ -135,9 +153,11 @@ export default defineContentScript({
       (error: unknown) => logger.warn('auto-skip preference unavailable; keeping it off', error)
     );
     const messageListener = (
-      message: SeekToRequest | FastScanRequest,
+      message: SeekToRequest | FastScanRequest | MissedSegmentContextRequest,
       _sender: chrome.runtime.MessageSender,
-      sendResponse: (response: SeekToResponse | FastScanResponse | ScanCapabilityResponse) => void
+      sendResponse: (
+        response: SeekToResponse | FastScanResponse | ScanCapabilityResponse | MissedSegmentContextResponse
+      ) => void
     ): boolean => {
       if (message?.type === SCAN_CAPABILITY_MESSAGE_TYPE) {
         const ready = scans.getCurrent()?.isReady() === true;
@@ -158,6 +178,20 @@ export default defineContentScript({
 
         const request = message as FastScanRequest;
         sendResponse(activeScan.setFastScan(request.enabled === true, Number(request.intervalSeconds ?? 2)));
+        return false;
+      }
+
+      if (message?.type === MISSED_SEGMENT_CONTEXT_MESSAGE_TYPE) {
+        const activeScan = scans.getCurrent();
+        if (!activeScan) {
+          sendResponse({ ok: false, error: 'No active YouTube scan is available.' });
+          return false;
+        }
+        const request = message as MissedSegmentContextRequest;
+        sendResponse(activeScan.captureMissedSegment(
+          Number(request.startSeconds),
+          Number(request.endSeconds)
+        ));
         return false;
       }
 
@@ -411,6 +445,9 @@ async function startYapSkipprScan(
       },
       setAutoSkip() {
         statusUi.showAutoSkipNotice(null);
+      },
+      captureMissedSegment() {
+        return { ok: false, error: 'No playable YouTube video is available.' };
       }
     };
   }
@@ -727,6 +764,33 @@ async function startYapSkipprScan(
           ? 'Only high-confidence segments with detected endings will be skipped.'
           : 'Detected segments will not change playback automatically.'
       });
+    },
+    captureMissedSegment(startSeconds: number, endSeconds: number): MissedSegmentContextResponse {
+      if (stopped || !playableVideo.isConnected) {
+        return { ok: false, error: 'The active YouTube player is unavailable.' };
+      }
+      const durationSeconds = getFiniteDuration(playableVideo);
+      if (
+        !Number.isFinite(startSeconds)
+        || !Number.isFinite(endSeconds)
+        || startSeconds < 0
+        || endSeconds <= startSeconds
+        || endSeconds - startSeconds > MAX_MISSED_SEGMENT_DURATION_SECONDS
+        || (durationSeconds !== null && endSeconds > durationSeconds + 1)
+      ) {
+        return { ok: false, error: 'The missed segment boundaries are invalid.' };
+      }
+      return {
+        ok: true,
+        ...createMissedSegmentContext({
+          startSeconds,
+          endSeconds,
+          videoDurationSeconds: durationSeconds,
+          evidence,
+          transcriptCues,
+          activeModel: activeCandidateModel
+        })
+      };
     }
   };
 
@@ -874,6 +938,9 @@ function createInactiveScanControl(error: string): ActiveScanControl {
     },
     setAutoSkip() {
       // No active playback session to update.
+    },
+    captureMissedSegment() {
+      return { ok: false, error };
     }
   };
 }

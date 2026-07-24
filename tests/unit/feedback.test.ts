@@ -8,14 +8,13 @@ import {
   normalizeFeedbackEndpoint
 } from '../../src/core/feedback';
 
-test('defines popup feedback actions for every supported occurrence feedback value', () => {
-  expect(OCCURRENCE_FEEDBACK_ACTIONS.map((action) => action.value)).toEqual(OCCURRENCE_FEEDBACK_VALUES);
-  expect(new Set(OCCURRENCE_FEEDBACK_ACTIONS.map((action) => action.value)).size).toBe(OCCURRENCE_FEEDBACK_VALUES.length);
+test('keeps per-occurrence actions distinct from first-class missed-segment feedback', () => {
+  expect(OCCURRENCE_FEEDBACK_VALUES).toEqual(['accurate', 'false_positive', 'wrong_timing', 'missed_context']);
+  expect(new Set(OCCURRENCE_FEEDBACK_ACTIONS.map((action) => action.value)).size).toBe(OCCURRENCE_FEEDBACK_ACTIONS.length);
   expect(OCCURRENCE_FEEDBACK_ACTIONS).toEqual([
     { value: 'accurate', label: 'Good', title: 'Correct detection' },
     { value: 'false_positive', label: 'Wrong', title: 'Wrong detection' },
-    { value: 'wrong_timing', label: 'Timing', title: 'Wrong timing' },
-    { value: 'missed_context', label: 'Context', title: 'Missing context' }
+    { value: 'wrong_timing', label: 'Timing', title: 'Wrong timing' }
   ]);
 });
 
@@ -111,10 +110,12 @@ test('creates a v2 payload for missed context feedback', () => {
       {
         videoUrl: 'https://www.youtube.com/watch?v=abc123',
         videoId: 'abc123',
-        occurrenceId: 'candidate-120',
-        occurrenceType: 'candidate',
+        occurrenceId: 'missed-120-180',
+        occurrenceType: 'missed-segment',
+        source: 'user-missed-segment',
         startSeconds: 120,
-        summary: 'Candidate segment at 2:00',
+        endSeconds: 180,
+        summary: '2:00-3:00 · manually reported missed ad read',
         feedback: 'missed_context'
       },
       2_000
@@ -122,8 +123,9 @@ test('creates a v2 payload for missed context feedback', () => {
   ).toMatchObject({
     app: 'YapSkippr',
     version: 2,
-    occurrenceId: 'candidate-120',
-    occurrenceType: 'candidate',
+    occurrenceId: 'missed-120-180',
+    occurrenceType: 'missed-segment',
+    endSeconds: 180,
     feedback: 'missed_context',
     createdAt: '1970-01-01T00:00:02.000Z'
   });

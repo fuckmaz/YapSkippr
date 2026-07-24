@@ -4,7 +4,7 @@ export const OCCURRENCE_FEEDBACK_VALUES = ['accurate', 'false_positive', 'wrong_
 export const OCCURRENCE_FEEDBACK_MODEL_SOURCE_VALUES = ['bundled', 'downloaded', 'fallback'] as const;
 
 export type OccurrenceFeedbackValue = (typeof OCCURRENCE_FEEDBACK_VALUES)[number];
-export type OccurrenceFeedbackType = 'candidate' | 'evidence';
+export type OccurrenceFeedbackType = 'candidate' | 'evidence' | 'missed-segment';
 export type OccurrenceFeedbackModelSource = (typeof OCCURRENCE_FEEDBACK_MODEL_SOURCE_VALUES)[number];
 
 export interface OccurrenceFeedbackAction {
@@ -16,8 +16,7 @@ export interface OccurrenceFeedbackAction {
 export const OCCURRENCE_FEEDBACK_ACTIONS = [
   { value: 'accurate', label: 'Good', title: 'Correct detection' },
   { value: 'false_positive', label: 'Wrong', title: 'Wrong detection' },
-  { value: 'wrong_timing', label: 'Timing', title: 'Wrong timing' },
-  { value: 'missed_context', label: 'Context', title: 'Missing context' }
+  { value: 'wrong_timing', label: 'Timing', title: 'Wrong timing' }
 ] as const satisfies readonly OccurrenceFeedbackAction[];
 
 export interface OccurrenceFeedbackEvidenceSnapshot {

@@ -23,7 +23,7 @@ export const feedbackPayloadV2Schema = z.object({
   videoUrl: z.string().url().nullable(),
   videoId: z.string().nullable(),
   occurrenceId: z.string().min(1),
-  occurrenceType: z.enum(['candidate', 'evidence']),
+  occurrenceType: z.enum(['candidate', 'evidence', 'missed-segment']),
   source: z.string().optional(),
   startSeconds: z.number().finite().nonnegative(),
   endSeconds: z.number().finite().nonnegative().optional(),
@@ -47,6 +47,22 @@ export const feedbackPayloadV2Schema = z.object({
       path: ['endSeconds'],
       message: 'Candidate end time must be after its start time.'
     });
+  }
+  if (value.occurrenceType === 'missed-segment') {
+    if (value.endSeconds === undefined || value.endSeconds - value.startSeconds > 600) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['endSeconds'],
+        message: 'Missed segments require an end time and may be at most 10 minutes long.'
+      });
+    }
+    if (value.feedback !== 'missed_context' || value.source !== 'user-missed-segment') {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['feedback'],
+        message: 'Missed segments must use the dedicated missed-context source and label.'
+      });
+    }
   }
 });
 

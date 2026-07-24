@@ -39,7 +39,7 @@ When evidence is found, YapSkippr fuses the signals into candidate segments and 
 ## Current Experience
 
 - Live popup dashboard with scan phase, sampled frame count, video timing, evidence counts, candidate segments, and recent activity.
-- Basic and detailed popup modes. Detailed mode shows raw evidence history, source-specific activity, and feedback controls for correct, wrong, wrong timing, and missing context reports.
+- Basic and detailed popup modes. Candidate feedback stays compact with correct, wrong, and wrong-timing actions; a dedicated missed-ad reporter accepts editable start/end timecodes.
 - Fast pre-scan mode that keeps analyzing the current YouTube tab every 1-5 seconds after the popup closes.
 - Default-off safe Auto-skip for high-confidence segments with detected endings, with per-skip Undo and replay suppression.
 - Candidate jump actions for quickly seeking to detected segment start times.
@@ -48,6 +48,7 @@ When evidence is found, YapSkippr fuses the signals into candidate segments and 
 - Optional feedback API integration with v2 payloads that include an anonymous client ID, candidate features, evidence snapshots, transcript context, and model metadata.
 - Admin-only server dashboard for reviewing feedback, training models, inspecting calibrated thresholds and metrics, and safely promoting or rolling back model artifacts.
 - Structured wrong-timing review with corrected start/end boundaries, distinct-video holdout evaluation, source-specific offsets, and automatic rejection when calibration does not reduce boundary error.
+- First-class missed-segment feedback that snapshots live detector evidence and nearby transcript context. Zero-evidence reports remain reviewable but are intentionally excluded from confidence training.
 - Chrome and Chromium support first, with a Firefox build available for local testing.
 
 ## How It Works
@@ -63,6 +64,7 @@ YouTube page
      and adjusts segment boundaries only when a distinct-video holdout proves lower error
   -> default-off skip controller may seek past a qualified bounded segment and offers Undo
   -> popup and page UI receive live status snapshots from extension storage
+  -> viewer-reported missed segments capture exact boundaries plus live detector context
   -> reviewed feedback trains the next JSON model artifact on your server
 ```
 

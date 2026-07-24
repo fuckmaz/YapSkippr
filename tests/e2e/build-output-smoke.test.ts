@@ -189,6 +189,7 @@ async function expectBuiltScripts(outputPath: string): Promise<void> {
   expect(contentScript).toContain('YAPSKIPPR_CLAIM_SCAN_STATUS');
   expect(contentScript).toContain('YAPSKIPPR_UPDATE_SCAN_STATUS');
   expect(contentScript).toContain('YAPSKIPPR_GET_SCAN_CAPABILITY');
+  expect(contentScript).toContain('YAPSKIPPR_GET_MISSED_SEGMENT_CONTEXT');
   expect(contentScript).toContain('scan status persistence disabled');
   expect(contentScript).toContain('frame-progress-bar');
   expect(contentScript).toContain('frame-qr-code');
@@ -225,6 +226,8 @@ async function expectBuiltScripts(outputPath: string): Promise<void> {
   expect(popupHtml).toContain('Evidence');
   expect(popupHtml).toContain('Auto-skip');
   expect(popupHtml).toContain('High-confidence segments with a detected ending only.');
+  expect(popupHtml).toContain('Missed an ad read?');
+  expect(popupHtml).toContain('Teach YapSkippr the segment it overlooked.');
   expect(popupHtml).toMatch(/id="auto-skip-toggle"[^>]*aria-pressed="false"[^>]*disabled/);
   expect(popupHtml).toContain('Detailed mode');
   expect(popupHtml).toContain('Share feedback');
@@ -256,6 +259,7 @@ async function expectBuiltScripts(outputPath: string): Promise<void> {
   expect(popupScript).toContain('YAPSKIPPR_SEEK_TO');
   expect(popupScript).toContain('YAPSKIPPR_SET_FAST_SCAN');
   expect(popupScript).toContain('YAPSKIPPR_GET_SCAN_CAPABILITY');
+  expect(popupScript).toContain('YAPSKIPPR_GET_MISSED_SEGMENT_CONTEXT');
   expect(popupScript).toContain('yapskippr.feedbackEndpoint');
   expect(popupScript).toContain('yapskippr.feedbackConsent');
   expect(popupScript).toContain('yapskippr.clientId');
@@ -265,7 +269,6 @@ async function expectBuiltScripts(outputPath: string): Promise<void> {
   expect(popupScript).toContain('personallyIdentifyingInfo');
   expect(popupScript).toContain('client_');
   expect(popupScript).toContain('missed_context');
-  expect(popupScript).toContain('Missing context');
   expect(popupScript).toContain('yapskippr.transcriptPhraseGroups');
   expect(popupScript).toContain('yapskippr.autoSkipEnabled');
   expect(popupScript).toContain('Undo is available beside the YouTube player after every skip.');

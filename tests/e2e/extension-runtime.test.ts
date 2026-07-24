@@ -2,6 +2,7 @@ import { expect, test, chromium, type BrowserContext, type Page, type Route, typ
 import { resolve } from 'node:path';
 
 const AUTO_SKIP_ENABLED_STORAGE_KEY = 'yapskippr.autoSkipEnabled';
+const FEEDBACK_CONSENT_STORAGE_KEY = 'yapskippr.feedbackConsent';
 const FEEDBACK_ENDPOINT_STORAGE_KEY = 'yapskippr.feedbackEndpoint';
 const FEEDBACK_ENDPOINT = 'https://www.youtube.com/api/v1/feedback';
 const WATCH_URL = 'https://www.youtube.com/watch?v=yapskippr-runtime-fixture';
@@ -184,6 +185,72 @@ test('applies a holdout-proven model boundary correction before auto-skip', asyn
   }
 });
 
+test('submits a first-class missed segment with live detector context from the packaged popup', async () => {
+  const extensionPath = resolve('.output/chrome-mv3');
+  const context = await chromium.launchPersistentContext('', {
+    channel: 'chromium',
+    headless: true,
+    args: [
+      `--disable-extensions-except=${extensionPath}`,
+      `--load-extension=${extensionPath}`,
+      '--autoplay-policy=no-user-gesture-required'
+    ]
+  });
+
+  try {
+    const serviceWorker = await getExtensionServiceWorker(context);
+    await serviceWorker.evaluate(async (settings) => {
+      await chrome.storage.local.clear();
+      await chrome.storage.local.set(settings);
+    }, {
+      [AUTO_SKIP_ENABLED_STORAGE_KEY]: false,
+      [FEEDBACK_ENDPOINT_STORAGE_KEY]: FEEDBACK_ENDPOINT,
+      [FEEDBACK_CONSENT_STORAGE_KEY]: true
+    });
+    let submittedPayload: Record<string, unknown> | null = null;
+    await installYouTubeFixtureRoutes(context, SUPPRESSING_MODEL, (payload) => {
+      submittedPayload = payload;
+    });
+    const youtubePage = await context.newPage();
+    await youtubePage.goto(WATCH_URL, { waitUntil: 'domcontentloaded' });
+    await expect(youtubePage.locator('#yapskippr-status-host [data-role="sources"]')).toContainText('T 3', {
+      timeout: 15_000
+    });
+
+    const popupPage = await context.newPage();
+    await youtubePage.bringToFront();
+    const popupUrl = new URL('/popup.html', serviceWorker.url()).toString();
+    await popupPage.goto(popupUrl, { waitUntil: 'domcontentloaded' });
+    await expect(popupPage.locator('#scan-title')).toContainText('YouTube', { timeout: 10_000 });
+    await popupPage.getByRole('button', { name: 'Report' }).click();
+    await popupPage.getByLabel('Start', { exact: true }).fill('0:00');
+    await popupPage.getByLabel('End', { exact: true }).fill('0:08');
+    await popupPage.getByRole('button', { name: 'Send segment' }).click();
+    await expect(popupPage.locator('#missed-segment-status')).toHaveText('Missed segment sent. Thank you.', {
+      timeout: 10_000
+    });
+
+    expect(submittedPayload).toMatchObject({
+      app: 'YapSkippr',
+      version: 2,
+      occurrenceType: 'missed-segment',
+      source: 'user-missed-segment',
+      startSeconds: 0,
+      endSeconds: 8,
+      feedback: 'missed_context',
+      featureSchemaVersion: 2,
+      modelId: 'model-runtime-suppress',
+      evidenceSnapshot: expect.arrayContaining([
+        expect.objectContaining({ source: 'transcript', kind: 'ad-read-start' })
+      ]),
+      candidateFeatures: expect.objectContaining({ transcriptStartCount: expect.any(Number) }),
+      transcriptContext: expect.stringContaining("Today's sponsor is Acme.")
+    });
+  } finally {
+    await context.close();
+  }
+});
+
 async function getExtensionServiceWorker(context: BrowserContext): Promise<Worker> {
   return context.serviceWorkers()[0] ?? context.waitForEvent('serviceworker', { timeout: 10_000 });
 }
@@ -196,7 +263,8 @@ async function setAutoSkipPreference(serviceWorker: Worker, enabled: boolean): P
 
 async function installYouTubeFixtureRoutes(
   context: BrowserContext,
-  activeModel: typeof SUPPRESSING_MODEL | typeof BOUNDARY_MODEL = SUPPRESSING_MODEL
+  activeModel: typeof SUPPRESSING_MODEL | typeof BOUNDARY_MODEL = SUPPRESSING_MODEL,
+  onFeedback?: (payload: Record<string, unknown>) => void
 ): Promise<void> {
   const videoBody = Buffer.from(VIDEO_BASE64, 'base64');
   await context.route('https://www.youtube.com/**', async (route) => {
@@ -228,6 +296,16 @@ async function installYouTubeFixtureRoutes(
       await route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify(activeModel)
+      });
+      return;
+    }
+
+    if (url.pathname === '/api/v1/feedback' && route.request().method() === 'POST') {
+      onFeedback?.(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, feedbackId: 'feedback-runtime-missed' })
       });
       return;
     }

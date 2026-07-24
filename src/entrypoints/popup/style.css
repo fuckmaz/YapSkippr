@@ -306,6 +306,85 @@ section {
   grid-column: 1 / -1;
 }
 
+.missed-segment-panel {
+  gap: 8px;
+  margin-top: 2px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(11, 14, 13, 0.3);
+}
+
+.missed-segment-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.missed-segment-head > div {
+  display: grid;
+  gap: 2px;
+}
+
+.missed-segment-head strong {
+  font-size: 12px;
+}
+
+.missed-segment-head small,
+#missed-segment-form label span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.missed-segment-head button {
+  min-height: 28px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+
+#missed-segment-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+#missed-segment-form label {
+  display: grid;
+  gap: 5px;
+}
+
+#missed-segment-form input {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--text);
+  padding: 0 9px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+#missed-segment-form > div {
+  display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+#missed-segment-form button {
+  min-height: 28px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+
+#missed-segment-submit {
+  border-color: var(--border-strong);
+  background: var(--accent-soft);
+  color: #9cebc1;
+}
+
 .fast-scan-controls {
   display: grid;
   grid-template-columns: auto 64px minmax(0, 1fr);

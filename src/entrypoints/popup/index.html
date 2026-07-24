@@ -94,6 +94,30 @@
         <div class="section-label">Candidates</div>
         <ol id="scan-candidates" class="scan-candidates"></ol>
         <p id="candidate-action-status" class="action-status" aria-live="polite"></p>
+        <section class="missed-segment-panel" aria-label="Report a missed ad read">
+          <div class="missed-segment-head">
+            <div>
+              <strong>Missed an ad read?</strong>
+              <small>Teach YapSkippr the segment it overlooked.</small>
+            </div>
+            <button id="missed-segment-toggle" type="button" aria-expanded="false">Report</button>
+          </div>
+          <form id="missed-segment-form" hidden>
+            <label>
+              <span>Start</span>
+              <input id="missed-segment-start" type="text" inputmode="numeric" placeholder="1:20" autocomplete="off" />
+            </label>
+            <label>
+              <span>End</span>
+              <input id="missed-segment-end" type="text" inputmode="numeric" placeholder="2:05" autocomplete="off" />
+            </label>
+            <div>
+              <button id="missed-segment-cancel" type="button">Cancel</button>
+              <button id="missed-segment-submit" type="submit">Send segment</button>
+            </div>
+          </form>
+          <p id="missed-segment-status" class="action-status" aria-live="polite"></p>
+        </section>
         <div class="section-label">Recent activity</div>
         <ol id="scan-events" class="scan-events"></ol>
         <section id="developer-panel" class="developer-panel" aria-label="Detailed scan information" hidden>
@@ -140,7 +164,7 @@
               </span>
               <input id="feedback-consent" type="checkbox" role="switch" aria-describedby="feedback-consent-disclosure feedback-consent-status" disabled />
             </label>
-            <p id="feedback-consent-disclosure">A report includes a stable anonymous ID, the exact video URL and ID, your selected label, detection and model metrics, evidence details, and nearby transcript text.</p>
+            <p id="feedback-consent-disclosure">A report includes a stable anonymous ID, the exact video URL and ID, your selected label or segment boundaries, detection and model metrics, evidence details, and nearby transcript text.</p>
             <p id="feedback-consent-status" class="action-status" aria-live="polite">Feedback sharing is off.</p>
           </div>
           <label class="endpoint-field" for="feedback-endpoint">

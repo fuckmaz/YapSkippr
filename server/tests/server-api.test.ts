@@ -127,6 +127,83 @@ describe('YapSkippr server API', () => {
     await app.close();
   });
 
+  test('accepts first-class missed segments and trains only evidence-backed reviews', async () => {
+    const repository = createMemoryRepository();
+    const app = await buildServer({ adminToken: 'secret', repository });
+    const evidenceBacked = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'missed-evidence-backed',
+        occurrenceType: 'missed-segment',
+        source: 'user-missed-segment',
+        startSeconds: 120,
+        endSeconds: 180,
+        feedback: 'missed_context'
+      })
+    });
+    const zeroSignal = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'missed-zero-signal',
+        occurrenceType: 'missed-segment',
+        source: 'user-missed-segment',
+        startSeconds: 220,
+        endSeconds: 260,
+        feedback: 'missed_context',
+        candidateFeatures: undefined,
+        featureSchemaVersion: undefined,
+        evidenceSnapshot: undefined
+      })
+    });
+    expect(evidenceBacked.statusCode).toBe(201);
+    expect(zeroSignal.statusCode).toBe(201);
+    const malformed = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({
+        occurrenceId: 'missed-malformed',
+        occurrenceType: 'missed-segment',
+        source: 'transcript',
+        startSeconds: 0,
+        endSeconds: 700,
+        feedback: 'accurate'
+      })
+    });
+    expect(malformed.statusCode).toBe(400);
+
+    for (const response of [evidenceBacked, zeroSignal]) {
+      const reviewed = await app.inject({
+        method: 'POST',
+        url: `/admin/feedback/${response.json().feedbackId}/review`,
+        headers: { 'x-admin-token': 'secret' },
+        payload: { label: 'positive' }
+      });
+      expect(reviewed.statusCode).toBe(200);
+    }
+
+    const examples = await repository.listTrainingExamples();
+    expect(examples).toHaveLength(1);
+    expect(examples[0]).toMatchObject({
+      occurrenceId: 'missed-evidence-backed',
+      label: 1
+    });
+    const dataset = await app.inject({
+      method: 'GET',
+      url: '/admin/api/training-dataset',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    const rows = dataset.json().items;
+    expect(rows.find((row: { occurrenceId: string }) => row.occurrenceId === 'missed-zero-signal')).toMatchObject({
+      source: 'user-missed-segment',
+      trainable: false,
+      exclusionReason: 'Feedback payload does not include candidate features.'
+    });
+
+    await app.close();
+  });
+
   test('rate limits public feedback submissions with retry headers', async () => {
     const app = await buildServer({
       adminToken: 'secret',

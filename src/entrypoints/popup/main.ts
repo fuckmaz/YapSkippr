@@ -37,6 +37,11 @@ import {
 } from '../../core/feedback';
 import { createIdleScanStatus, type ScanStatusEvidence, type ScanStatusSnapshot } from '../../core/scan-status';
 import {
+  formatFeedbackTimecode,
+  MAX_MISSED_SEGMENT_DURATION_SECONDS,
+  parseFeedbackTimecode
+} from '../../core/missed-segment';
+import {
   createScanCapabilityController,
   createScanCapabilitySessionKey
 } from '../../core/scan-capability-controller';
@@ -56,6 +61,7 @@ const frameCaptureOrigins = ['<all_urls>'];
 const seekToMessageType = 'YAPSKIPPR_SEEK_TO';
 const fastScanMessageType = 'YAPSKIPPR_SET_FAST_SCAN';
 const scanCapabilityMessageType = 'YAPSKIPPR_GET_SCAN_CAPABILITY';
+const missedSegmentContextMessageType = 'YAPSKIPPR_GET_MISSED_SEGMENT_CONTEXT';
 const status = document.querySelector('#status');
 const basicModeToggle = document.querySelector<HTMLButtonElement>('#basic-mode-toggle');
 const detailedModeToggle = document.querySelector<HTMLButtonElement>('#detailed-mode-toggle');
@@ -81,6 +87,13 @@ const autoSkipToggle = document.querySelector<HTMLButtonElement>('#auto-skip-tog
 const autoSkipStatus = document.querySelector('#auto-skip-status');
 const scanCandidates = document.querySelector<HTMLOListElement>('#scan-candidates');
 const candidateActionStatus = document.querySelector('#candidate-action-status');
+const missedSegmentToggle = document.querySelector<HTMLButtonElement>('#missed-segment-toggle');
+const missedSegmentForm = document.querySelector<HTMLFormElement>('#missed-segment-form');
+const missedSegmentStart = document.querySelector<HTMLInputElement>('#missed-segment-start');
+const missedSegmentEnd = document.querySelector<HTMLInputElement>('#missed-segment-end');
+const missedSegmentCancel = document.querySelector<HTMLButtonElement>('#missed-segment-cancel');
+const missedSegmentSubmit = document.querySelector<HTMLButtonElement>('#missed-segment-submit');
+const missedSegmentStatus = document.querySelector('#missed-segment-status');
 const scanEvents = document.querySelector<HTMLOListElement>('#scan-events');
 const developerPanel = document.querySelector<HTMLElement>('#developer-panel');
 const detailVideoId = document.querySelector('#detail-video-id');
@@ -176,6 +189,15 @@ fastScanToggle?.addEventListener('click', () => {
 
 autoSkipToggle?.addEventListener('click', () => {
   void saveAutoSkipPreference(autoSkipToggle.dataset.enabled !== 'true');
+});
+
+missedSegmentToggle?.addEventListener('click', () => {
+  setMissedSegmentFormOpen(missedSegmentForm?.hidden !== false);
+});
+missedSegmentCancel?.addEventListener('click', () => setMissedSegmentFormOpen(false));
+missedSegmentForm?.addEventListener('submit', (event) => {
+  event.preventDefault();
+  void submitMissedSegment();
 });
 
 scanEvidenceEvents?.addEventListener('click', (event) => {
@@ -496,6 +518,10 @@ function setCandidateActionStatus(message: string): void {
 
 function setFeedbackStatus(message: string): void {
   feedbackStatus?.replaceChildren(document.createTextNode(message));
+}
+
+function setMissedSegmentStatus(message: string): void {
+  missedSegmentStatus?.replaceChildren(document.createTextNode(message));
 }
 
 function setFeedbackConsentStatus(message: string): void {
@@ -836,12 +862,95 @@ async function resetTranscriptPhraseGroups(): Promise<void> {
   setTranscriptPhraseStatus('Default transcript phrases restored. Reload the YouTube tab to apply defaults.');
 }
 
-async function sendFeedbackForButton(button: HTMLButtonElement): Promise<void> {
-  if (!feedbackSendControl.isAuthorized()) {
-    presentFeedbackConsentRequired('Feedback sharing is off. Turn it on before sending a report.');
+type FeedbackPayloadInput = Parameters<typeof createOccurrenceFeedbackPayload>[0];
+type MissedSegmentContextResponse = {
+  ok: boolean;
+  error?: string;
+} & Partial<Pick<
+  FeedbackPayloadInput,
+  | 'modelId'
+  | 'modelVersion'
+  | 'modelSource'
+  | 'featureSchemaVersion'
+  | 'heuristicConfidence'
+  | 'modelConfidence'
+  | 'candidateFeatures'
+  | 'evidenceSnapshot'
+  | 'transcriptContext'
+>>;
+
+function setMissedSegmentFormOpen(open: boolean): void {
+  if (!missedSegmentForm || !missedSegmentToggle) return;
+  missedSegmentForm.hidden = !open;
+  missedSegmentToggle.setAttribute('aria-expanded', String(open));
+  missedSegmentToggle.textContent = open ? 'Close' : 'Report';
+  if (!open) return;
+
+  const currentTime = currentScanStatus.videoCurrentTimeSeconds ?? 0;
+  if (missedSegmentStart && !missedSegmentStart.value) {
+    missedSegmentStart.value = formatFeedbackTimecode(Math.max(0, currentTime - 30));
+  }
+  if (missedSegmentEnd && !missedSegmentEnd.value) {
+    missedSegmentEnd.value = formatFeedbackTimecode(currentTime);
+  }
+  setMissedSegmentStatus('Adjust the start and end, then send.');
+  missedSegmentStart?.focus();
+}
+
+async function submitMissedSegment(): Promise<void> {
+  const startSeconds = parseFeedbackTimecode(missedSegmentStart?.value ?? '');
+  const endSeconds = parseFeedbackTimecode(missedSegmentEnd?.value ?? '');
+  const durationSeconds = currentScanStatus.videoDurationSeconds;
+  if (
+    startSeconds === null
+    || endSeconds === null
+    || endSeconds <= startSeconds
+    || endSeconds - startSeconds > MAX_MISSED_SEGMENT_DURATION_SECONDS
+    || (durationSeconds !== null && endSeconds > durationSeconds + 1)
+  ) {
+    setMissedSegmentStatus('Enter a valid segment up to 10 minutes long.');
+    missedSegmentStart?.focus();
+    return;
+  }
+  if (!currentScanStatus.videoId || !currentScanStatus.pageUrl) {
+    setMissedSegmentStatus('Open a scanned YouTube video before reporting a missed segment.');
     return;
   }
 
+  missedSegmentSubmit?.setAttribute('disabled', 'true');
+  setMissedSegmentStatus('Capturing detector context...');
+  try {
+    const response = await sendMissedSegmentContextMessage(getOwnedTabId(), startSeconds, endSeconds);
+    if (!response.ok) throw new Error(response.error ?? 'The YouTube tab could not capture this segment.');
+    const { ok: _ok, error: _error, ...context } = response;
+    const sent = await sendFeedbackPayload({
+      videoUrl: currentScanStatus.pageUrl,
+      videoId: currentScanStatus.videoId,
+      occurrenceId: `missed-${currentScanStatus.videoId}-${Math.round(startSeconds * 10)}-${Math.round(endSeconds * 10)}`,
+      occurrenceType: 'missed-segment',
+      source: 'user-missed-segment',
+      startSeconds,
+      endSeconds,
+      summary: `${formatFeedbackTimecode(startSeconds)}-${formatFeedbackTimecode(endSeconds)} · manually reported missed ad read`,
+      reason: 'Viewer marked an ad-read segment that YapSkippr did not detect.',
+      feedback: 'missed_context',
+      ...context
+    }, missedSegmentSubmit, setMissedSegmentStatus);
+    if (sent) {
+      if (missedSegmentStart) missedSegmentStart.value = '';
+      if (missedSegmentEnd) missedSegmentEnd.value = '';
+      setMissedSegmentFormOpen(false);
+      setMissedSegmentStatus('Missed segment sent. Thank you.');
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    setMissedSegmentStatus(`Could not send segment: ${message}`);
+  } finally {
+    missedSegmentSubmit?.removeAttribute('disabled');
+  }
+}
+
+async function sendFeedbackForButton(button: HTMLButtonElement): Promise<void> {
   const startSeconds = Number(button.dataset.startSeconds);
   const feedback = button.dataset.feedback as OccurrenceFeedbackValue | undefined;
   const occurrenceType = button.dataset.occurrenceType as OccurrenceFeedbackType | undefined;
@@ -850,17 +959,9 @@ async function sendFeedbackForButton(button: HTMLButtonElement): Promise<void> {
     return;
   }
 
-  const endpoint = feedbackSendControl.getEndpoint();
-  if (!endpoint) {
-    setFeedbackStatus('Set and save a feedback API endpoint in Detailed mode first.');
-    setDetailedMode(true);
-    feedbackEndpointInput?.focus();
-    return;
-  }
-
   const occurrenceId = button.dataset.occurrenceId ?? 'unknown';
   const endSeconds = Number(button.dataset.endSeconds);
-  const payloadSnapshot = JSON.stringify(createOccurrenceFeedbackPayload({
+  await sendFeedbackPayload({
     videoUrl: currentScanStatus.pageUrl,
     videoId: currentScanStatus.videoId,
     occurrenceId,
@@ -872,32 +973,56 @@ async function sendFeedbackForButton(button: HTMLButtonElement): Promise<void> {
     reason: button.dataset.reason,
     feedback,
     ...getFeedbackContext(currentScanStatus, occurrenceId, occurrenceType)
-  }, Date.now()));
-  const lease = feedbackSendControl.begin();
-  if (!lease) {
-    presentFeedbackConsentRequired('Feedback sharing changed before the report could start.');
-    return;
+  }, button, setFeedbackStatus);
+}
+
+async function sendFeedbackPayload(
+  input: FeedbackPayloadInput,
+  trigger: HTMLButtonElement | null,
+  setStatus: (message: string) => void
+): Promise<boolean> {
+  if (!feedbackSendControl.isAuthorized()) {
+    setStatus('Feedback sharing is off. Turn it on before sending a report.');
+    presentFeedbackConsentRequired('Feedback sharing is off. Turn it on before sending a report.');
+    return false;
+  }
+  if (!feedbackSendControl.getEndpoint()) {
+    setStatus('Set and save a feedback API endpoint in Detailed mode first.');
+    setFeedbackStatus('Set and save a feedback API endpoint in Detailed mode first.');
+    setDetailedMode(true);
+    feedbackEndpointInput?.focus();
+    return false;
   }
 
-  button.disabled = true;
-  setFeedbackStatus('Sending feedback...');
+  const payloadSnapshot = JSON.stringify(createOccurrenceFeedbackPayload(input, Date.now()));
+  const lease = feedbackSendControl.begin();
+  if (!lease) {
+    setStatus('Feedback sharing changed before the report could start.');
+    presentFeedbackConsentRequired('Feedback sharing changed before the report could start.');
+    return false;
+  }
+
+  if (trigger) trigger.disabled = true;
+  setStatus('Sending feedback...');
 
   try {
     const authorization = await readFeedbackAuthorization();
     feedbackSendControl.assertCurrent(lease);
     if (!authorization.allowed) {
       revokeFeedbackAuthorization(createFeedbackConsentStatus(authorization));
+      setStatus(createFeedbackConsentStatus(authorization));
       presentFeedbackConsentRequired(createFeedbackConsentStatus(authorization));
-      return;
+      return false;
     }
 
     const endpointAccess = await containsFeedbackEndpointAccess(lease.endpoint);
     feedbackSendControl.assertCurrent(lease);
     if (!endpointAccess) {
       setDetailedMode(true);
+      setStatus('Feedback was not sent. Press Save beside the endpoint to grant access to its origin.');
       setFeedbackStatus('Feedback was not sent. Press Save beside the endpoint to grant access to its origin.');
       feedbackEndpointInput?.focus();
-      return;
+      return false;
     }
 
     const clientId = await loadAnonymousClientId(lease);
@@ -907,8 +1032,9 @@ async function sendFeedbackForButton(button: HTMLButtonElement): Promise<void> {
     feedbackSendControl.assertCurrent(lease);
     if (!sendAuthorization.allowed) {
       revokeFeedbackAuthorization(createFeedbackConsentStatus(sendAuthorization));
+      setStatus(createFeedbackConsentStatus(sendAuthorization));
       presentFeedbackConsentRequired(createFeedbackConsentStatus(sendAuthorization));
-      return;
+      return false;
     }
 
     const payload = JSON.parse(payloadSnapshot) as ReturnType<typeof createOccurrenceFeedbackPayload>;
@@ -924,14 +1050,16 @@ async function sendFeedbackForButton(button: HTMLButtonElement): Promise<void> {
     if (!response.ok) {
       throw new Error(`Server returned HTTP ${response.status}.`);
     }
-    setFeedbackStatus('Feedback sent.');
+    setStatus('Feedback sent.');
+    return true;
   } catch (error) {
-    if (isFeedbackSendInvalidatedError(error) || !feedbackSendControl.isCurrent(lease)) return;
+    if (isFeedbackSendInvalidatedError(error) || !feedbackSendControl.isCurrent(lease)) return false;
     const message = error instanceof Error ? error.message : String(error);
-    setFeedbackStatus(`Feedback failed: ${message}`);
+    setStatus(`Feedback failed: ${message}`);
+    return false;
   } finally {
     feedbackSendControl.finish(lease);
-    button.disabled = false;
+    if (trigger) trigger.disabled = false;
   }
 }
 
@@ -1271,6 +1399,27 @@ function sendScanCapabilityMessage(tabId: number): Promise<{ ok: boolean; ready:
           return;
         }
         resolve(response ?? { ok: false, ready: false, error: 'No response from YapSkippr in this tab.' });
+      }
+    );
+  });
+}
+
+function sendMissedSegmentContextMessage(
+  tabId: number,
+  startSeconds: number,
+  endSeconds: number
+): Promise<MissedSegmentContextResponse> {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.sendMessage(
+      tabId,
+      { type: missedSegmentContextMessageType, startSeconds, endSeconds },
+      (response?: MissedSegmentContextResponse) => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          reject(new Error(error.message));
+          return;
+        }
+        resolve(response ?? { ok: false, error: 'No response from YapSkippr in this tab.' });
       }
     );
   });
