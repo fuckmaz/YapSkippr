@@ -2,11 +2,35 @@ import { expect, test, chromium, type BrowserContext, type Page, type Route, typ
 import { resolve } from 'node:path';
 
 const AUTO_SKIP_ENABLED_STORAGE_KEY = 'yapskippr.autoSkipEnabled';
+const FEEDBACK_ENDPOINT_STORAGE_KEY = 'yapskippr.feedbackEndpoint';
+const FEEDBACK_ENDPOINT = 'https://www.youtube.com/api/v1/feedback';
 const WATCH_URL = 'https://www.youtube.com/watch?v=yapskippr-runtime-fixture';
 const VIDEO_URL = 'https://www.youtube.com/yapskippr-runtime-fixture.webm';
 const CAPTION_URL = 'https://www.youtube.com/api/timedtext?v=yapskippr-runtime-fixture&lang=en';
 const VIDEO_BASE64 =
   'GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQJChYECGFOAZwEAAAAAAATnEU2bdLpNu4tTq4QVSalmU6yBoU27i1OrhBZUrmtTrIHYTbuMU6uEElTDZ1OsggElTbuMU6uEHFO7a1OsggPU7AEAAAAAAABZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAVSalmsirXsYMPQkBNgI1MYXZmNjIuMTIuMTAyV0GNTGF2ZjYyLjEyLjEwMkSJiEDNTAAAAAAAFlSua8iuAQAAAAAAAD/XgQFzxYj7FqMj79mIn5yBACK1nIN1bmSIgQCGhVZfVlA5g4EBI+ODhDuaygDgkLCBELqBEJqBAlW5gQESVMNnQIBzc6BjwIBnyJpFo4dFTkNPREVSRIeNTGF2ZjYyLjEyLjEwMnNz2mPAi2PFiPsWoyPv2YifZ8ilRaOHRU5DT0RFUkSHmExhdmM2Mi4yOC4xMDIgbGlidnB4LXZwOWfIoUWjiERVUkFUSU9ORIeTMDA6MDA6MTUuMDAwMDAwMDAwAB9DtnVA1eeBAKOhgQAAgIJJg0IAAPAA9gA4JBwYQgAAMGAAABC///2LKgAAo6GBA+iAgkmDQgAA8AD2ADgkHBhCAAAwYAAAEL///YsqAACjoYEH0ICCSYNCAADwAPYAOCQcGEIAADBgAAAQv//9iyoAAKOhgQu4gIJJg0IAAPAA9gA4JBwYQgAAMGAAABC///2LKgAAo6GBD6CAgkmDQgAA8AD2ADgkHBhCAAAwYAAAEL///YsqAACjoYETiICCSYNCAADwAPYAOCQcGEIAADBgAAAQv//9iyoAAB9DtnVA1ueCF3CjoYEAAICCSYNCAADwAPYAOCQcGEIAADBgAAAQv//9iyoAAKOhgQPogIJJg0IAAPAA9gA4JBwYQgAAMGAAABC///2LKgAAo6GBB9CAgkmDQgAA8AD2ADgkHBhCAAAwYAAAEL///YsqAACjoYELuICCSYNCAADwAPYAOCQcGEIAADBgAAAQv//9iyoAAKOhgQ+ggIJJg0IAAPAA9gA4JBwYQgAAMGAAABC///2LKgAAo6GBE4iAgkmDQgAA8AD2ADgkHBhCAAAwYAAAEL///YsqAAAfQ7Z17eeCLuCjoYEAAICCSYNCAADwAPYAOCQcGEIAADBgAAAQv//9iyoAAKOhgQPogIJJg0IAAPAA9gA4JBwYQgAAMGAAABC///2LKgAAo6GBB9CAgkmDQgAA8AD2ADgkHBhCAAAwYAAAEL///YsqAAAcU7trQQ27j7OBALeK94EB8YIBq/CBA7uQs4ID6LeK94EB8YIBq/CBJruQs4IH0LeK94EB8YIBq/CBSbuQs4ILuLeK94EB8YIBq/CBbLuQs4IPoLeK94EB8YIBq/CBj7uQs4ITiLeK94EB8YIBq/CBsruQs4IXcLeK94EB8YIChvCBBLuQs4IbWLeK94EB8YIChvCBJ7uQs4IfQLeK94EB8YIChvCBSruQs4IjKLeK94EB8YIChvCBbbuQs4InELeK94EB8YIChvCBkLuQs4Iq+LeK94EB8YIChvCBs7uQs4Iu4LeK94EB8YIDYvCBBLuQs4IyyLeK94EB8YIDYvCBJ7uQs4I2sLeK94EB8YIDYvCBSg=';
+const SUPPRESSING_MODEL = {
+  modelId: 'model-runtime-suppress',
+  modelVersion: '2026.07.24.000000',
+  featureSchemaVersion: 2,
+  createdAt: '2026-07-24T00:00:00.000Z',
+  promotedAt: '2026-07-24T00:05:00.000Z',
+  intercept: 0,
+  weights: {},
+  thresholds: { positive: 0.65, review: 0.45 },
+  metrics: {
+    thresholdsCalibrated: 1,
+    thresholdCalibrationExamples: 40,
+    thresholdCalibrationPositives: 20,
+    thresholdCalibrationNegatives: 20,
+    thresholdCalibrationGroups: 10,
+    positivePrecision: 0.95,
+    positiveRecall: 0.75,
+    reviewRecall: 0.98,
+    auc: 0.9
+  },
+  trainingSetSummary: { examples: 200, positives: 100, negatives: 100 }
+};
 
 test('runs safe auto-skip, Undo, and video replacement through the packaged extension', async () => {
   const extensionPath = resolve('.output/chrome-mv3');
@@ -67,6 +91,44 @@ test('runs safe auto-skip, Undo, and video replacement through the packaged exte
   }
 });
 
+test('lets a downloaded model threshold suppress a heuristic candidate before auto-skip', async () => {
+  const extensionPath = resolve('.output/chrome-mv3');
+  const context = await chromium.launchPersistentContext('', {
+    channel: 'chromium',
+    headless: true,
+    args: [
+      `--disable-extensions-except=${extensionPath}`,
+      `--load-extension=${extensionPath}`,
+      '--autoplay-policy=no-user-gesture-required'
+    ]
+  });
+
+  try {
+    const serviceWorker = await getExtensionServiceWorker(context);
+    await serviceWorker.evaluate(async (settings) => {
+      await chrome.storage.local.clear();
+      await chrome.storage.local.set(settings);
+    }, {
+      [AUTO_SKIP_ENABLED_STORAGE_KEY]: true,
+      [FEEDBACK_ENDPOINT_STORAGE_KEY]: FEEDBACK_ENDPOINT
+    });
+
+    await installYouTubeFixtureRoutes(context);
+    const page = await context.newPage();
+    await page.goto(WATCH_URL, { waitUntil: 'domcontentloaded' });
+
+    const statusHost = page.locator('#yapskippr-status-host');
+    await expect(statusHost.locator('[data-role="sources"]')).toContainText('T 3', { timeout: 15_000 });
+    await page.locator('video.html5-main-video').evaluate((video: HTMLVideoElement) => video.pause());
+
+    await expect(statusHost.locator('[data-role="candidates"]')).toHaveText('0 candidates');
+    await expect(statusHost.locator('[data-role="skip-notice"]')).toBeHidden();
+    expect(await videoCurrentTime(page)).toBeLessThan(8);
+  } finally {
+    await context.close();
+  }
+});
+
 async function getExtensionServiceWorker(context: BrowserContext): Promise<Worker> {
   return context.serviceWorkers()[0] ?? context.waitForEvent('serviceworker', { timeout: 10_000 });
 }
@@ -100,6 +162,14 @@ async function installYouTubeFixtureRoutes(context: BrowserContext): Promise<voi
             { tStartMs: 8_000, dDurationMs: 1_000, segs: [{ utf8: 'Anyway, now back to the video.' }] }
           ]
         })
+      });
+      return;
+    }
+
+    if (url.pathname === '/api/v1/model/latest') {
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify(SUPPRESSING_MODEL)
       });
       return;
     }

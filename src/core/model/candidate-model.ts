@@ -4,6 +4,7 @@ import {
   type CandidateFeatureVector,
   type ExtractCandidateFeatureOptions
 } from './candidate-features';
+import { HEURISTIC_DISPLAY_THRESHOLD } from '../analysis/evidence-fusion';
 import type { SegmentCandidate } from '../types';
 
 export type CandidateModelSource = 'bundled' | 'downloaded' | 'fallback';
@@ -26,6 +27,18 @@ export interface ApplyCandidateModelOptions extends ExtractCandidateFeatureOptio
   modelSource: CandidateModelSource;
 }
 
+export interface CandidateModelThresholds {
+  positive: number;
+  review: number;
+}
+
+export interface CandidateSelectionResult {
+  displayedCandidates: SegmentCandidate[];
+  reviewCandidates: SegmentCandidate[];
+  rejectedCandidates: SegmentCandidate[];
+  thresholds: CandidateModelThresholds;
+}
+
 export function validateCandidateModel(value: unknown): CandidateModelArtifact | null {
   if (!isRecord(value)) return null;
   if (typeof value.modelId !== 'string' || !value.modelId.trim()) return null;
@@ -34,7 +47,7 @@ export function validateCandidateModel(value: unknown): CandidateModelArtifact |
   if (typeof value.createdAt !== 'string' || !value.createdAt.trim()) return null;
   if (!isFiniteNumber(value.intercept)) return null;
   if (!isFiniteNumberRecord(value.weights)) return null;
-  if (!isFiniteNumberRecord(value.thresholds)) return null;
+  if (!isFiniteNumberRecord(value.thresholds) || !parseCandidateModelThresholds(value.thresholds)) return null;
   if (!isFiniteNumberRecord(value.metrics)) return null;
   if (!isFiniteNumberRecord(value.trainingSetSummary)) return null;
 
@@ -98,6 +111,42 @@ export function applyModelToCandidates(
   }));
 }
 
+export function selectCandidateSegments(
+  candidates: readonly SegmentCandidate[],
+  options: ApplyCandidateModelOptions & {
+    getTranscriptContext?: (candidate: SegmentCandidate) => string;
+  }
+): CandidateSelectionResult {
+  const scoredCandidates = applyModelToCandidates(candidates, options);
+  const thresholds = options.model
+    ? parseCandidateModelThresholds(options.model.thresholds) ?? fallbackCandidateModelThresholds()
+    : fallbackCandidateModelThresholds();
+
+  return {
+    displayedCandidates: scoredCandidates.filter((candidate) => candidate.confidence >= thresholds.positive),
+    reviewCandidates: scoredCandidates.filter(
+      (candidate) => candidate.confidence >= thresholds.review && candidate.confidence < thresholds.positive
+    ),
+    rejectedCandidates: scoredCandidates.filter((candidate) => candidate.confidence < thresholds.review),
+    thresholds
+  };
+}
+
+export function parseCandidateModelThresholds(value: unknown): CandidateModelThresholds | null {
+  if (!isRecord(value)) return null;
+  const positive = value.positive;
+  const review = value.review;
+  if (!isProbability(positive) || !isProbability(review) || review > positive) return null;
+  return { positive, review };
+}
+
+function fallbackCandidateModelThresholds(): CandidateModelThresholds {
+  return {
+    positive: HEURISTIC_DISPLAY_THRESHOLD,
+    review: HEURISTIC_DISPLAY_THRESHOLD
+  };
+}
+
 function sigmoid(value: number): number {
   return 1 / (1 + Math.exp(-value));
 }
@@ -112,6 +161,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isProbability(value: unknown): value is number {
+  return isFiniteNumber(value) && value >= 0 && value <= 1;
 }
 
 function isFiniteNumberRecord(value: unknown): value is Record<string, number> {

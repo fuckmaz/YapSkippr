@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { feedbackPayloadV2Schema } from './feedback/schema.js';
 import { buildTrainingDatasetRows } from './model/training-dataset.js';
 import { trainLogisticModel } from './model/trainer.js';
+import { evaluateModelPromotionSafety } from './model/promotion-safety.js';
 import { getCompatibleTrainingExamples, summarizeTrainingReadiness } from './model/training-readiness.js';
 import type { CandidateModelArtifact } from './model/types.js';
 import { createMemoryRepository } from './store/memory.js';
@@ -151,8 +152,19 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
 
   app.post('/admin/models/:id/promote', { preHandler: requireAdmin(adminToken) }, async (request, reply) => {
     const { id } = request.params as { id: string };
+    const candidate = await repository.getModel(id);
+    if (!candidate) return reply.status(404).send({ ok: false, error: 'Model not found.' });
+    const promoted = await repository.getPromotedModel();
+    const safety = evaluateModelPromotionSafety(candidate, promoted);
+    if (!safety.safe) {
+      return reply.status(409).send({
+        ok: false,
+        error: `Promotion blocked: ${safety.blockers[0]}`,
+        blockers: safety.blockers
+      });
+    }
     const model = await repository.promoteModel(id);
-    if (!model) return reply.status(404).send({ ok: false, error: 'Model not found.' });
+    if (!model) return reply.status(409).send({ ok: false, error: 'Model disappeared before promotion.' });
     return { ok: true, model };
   });
 
@@ -326,6 +338,26 @@ function buildModelEvaluationReport(modelId: string, model: CandidateModelArtifa
   return {
     modelId,
     metrics: model.metrics,
+    thresholds: model.thresholds,
+    thresholdCalibration: {
+      mode: model.metrics.thresholdsCalibrated === 1 ? 'validation' : 'fallback',
+      examples: model.metrics.thresholdCalibrationExamples ?? 0,
+      positives: model.metrics.thresholdCalibrationPositives ?? 0,
+      negatives: model.metrics.thresholdCalibrationNegatives ?? 0,
+      groups: model.metrics.thresholdCalibrationGroups ?? 0,
+      positive: {
+        threshold: model.thresholds.positive ?? null,
+        precision: model.metrics.positivePrecision ?? null,
+        recall: model.metrics.positiveRecall ?? null,
+        f1: model.metrics.positiveF1 ?? null
+      },
+      review: {
+        threshold: model.thresholds.review ?? null,
+        precision: model.metrics.reviewPrecision ?? null,
+        recall: model.metrics.reviewRecall ?? null,
+        f1: model.metrics.reviewF1 ?? null
+      }
+    },
     trainingSetSummary: model.trainingSetSummary,
     promotedComparison: promoted
       ? {
@@ -337,9 +369,18 @@ function buildModelEvaluationReport(modelId: string, model: CandidateModelArtifa
 }
 
 function compareModelMetrics(metrics: Record<string, number>, baseline: Record<string, number>): Record<string, number> {
-  const names = new Set([...Object.keys(metrics), ...Object.keys(baseline)]);
+  const names = [
+    'accuracy',
+    'precision',
+    'recall',
+    'f1',
+    'auc',
+    'positivePrecision',
+    'positiveRecall',
+    'reviewRecall'
+  ];
   return Object.fromEntries(
-    [...names].sort().flatMap((name) => {
+    names.flatMap((name) => {
       const value = metrics[name];
       const baselineValue = baseline[name];
       if (!Number.isFinite(value) || !Number.isFinite(baselineValue)) return [];

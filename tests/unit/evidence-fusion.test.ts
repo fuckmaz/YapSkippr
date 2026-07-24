@@ -1,4 +1,7 @@
-import { buildSegmentCandidates } from '../../src/core/analysis/evidence-fusion';
+import {
+  buildSegmentCandidatePool,
+  buildSegmentCandidates
+} from '../../src/core/analysis/evidence-fusion';
 import type { TimedEvidence } from '../../src/core/types';
 
 function evidence(overrides: Partial<TimedEvidence>): TimedEvidence {
@@ -222,6 +225,25 @@ test('filters candidates below the display confidence threshold', () => {
   ]);
 
   expect(candidates).toEqual([]);
+});
+
+test('keeps structurally valid low-confidence candidates in the model-scoring pool', () => {
+  const input = [
+    evidence({
+      kind: 'ad-read-start',
+      startSeconds: 40,
+      confidence: 0.2,
+      reason: 'weak transcript start'
+    })
+  ];
+
+  expect(buildSegmentCandidates(input)).toEqual([]);
+  expect(buildSegmentCandidatePool(input)).toMatchObject([
+    {
+      startSeconds: 40,
+      confidence: 0.15
+    }
+  ]);
 });
 
 test('clusters repeated nearby frame-only evidence into one candidate', () => {

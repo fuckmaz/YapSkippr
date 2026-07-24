@@ -1,12 +1,12 @@
 import type { SegmentCandidate, TimedEvidence } from '../types';
 
-const DISPLAY_THRESHOLD = 0.4;
+export const HEURISTIC_DISPLAY_THRESHOLD = 0.4;
 const PRESENCE_WINDOW_SECONDS = 20;
 const FRAME_EVIDENCE_COALESCE_WINDOW_SECONDS = 6;
 const MAX_SEGMENT_SECONDS = 240;
 const DEFAULT_HIGH_CONFIDENCE_DURATION_SECONDS = 120;
 
-export function buildSegmentCandidates(evidence: TimedEvidence[]): SegmentCandidate[] {
+export function buildSegmentCandidatePool(evidence: TimedEvidence[]): SegmentCandidate[] {
   const sorted = coalesceFrameEvidence([...evidence].sort((a, b) => a.startSeconds - b.startSeconds));
   const starts = sorted.filter((item) => item.kind === 'ad-read-start');
   const candidates =
@@ -14,9 +14,12 @@ export function buildSegmentCandidates(evidence: TimedEvidence[]): SegmentCandid
       ? starts.map((seed) => buildCandidateFromSeed(seed, sorted))
       : buildPresenceOnlyCandidates(sorted.filter((item) => item.kind === 'ad-read-presence'));
 
-  return candidates
-    .filter((candidate) => candidate.confidence >= DISPLAY_THRESHOLD)
-    .sort((a, b) => a.startSeconds - b.startSeconds);
+  return candidates.sort((a, b) => a.startSeconds - b.startSeconds);
+}
+
+export function buildSegmentCandidates(evidence: TimedEvidence[]): SegmentCandidate[] {
+  return buildSegmentCandidatePool(evidence)
+    .filter((candidate) => candidate.confidence >= HEURISTIC_DISPLAY_THRESHOLD);
 }
 
 function buildPresenceOnlyCandidates(presenceEvidence: TimedEvidence[]): SegmentCandidate[] {

@@ -3,14 +3,18 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { buildServer } from '../src/app.js';
 import { feedbackFixture } from './fixtures.js';
 import type { FastifyInstance } from 'fastify';
+import { createMemoryRepository } from '../src/store/memory.js';
+import type { YapSkipprRepository } from '../src/store/types.js';
 
 describe('YapSkippr admin dashboard browser workflow', () => {
   let app: FastifyInstance;
   let browser: Browser;
   let baseUrl: string;
+  let repository: YapSkipprRepository;
 
   beforeAll(async () => {
-    app = await buildServer({ adminToken: 'secret' });
+    repository = createMemoryRepository();
+    app = await buildServer({ adminToken: 'secret', repository });
     await app.listen({ host: '127.0.0.1', port: 0 });
     const address = app.server.address();
     if (!address || typeof address === 'string') throw new Error('Could not bind test server.');
@@ -247,6 +251,8 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.getByRole('heading', { name: 'Training Run Details' }));
     await expectVisible(page, page.getByText('Dataset split'));
     await expectVisible(page, page.getByText('Validation metrics'));
+    await expectVisible(page, page.getByText('Threshold calibration'));
+    await expectVisible(page, page.getByText('Conservative fallback'));
     await expectVisible(page, page.getByText('No promoted model is currently available for comparison.'));
 
     await page.getByRole('button', { name: 'Models' }).click();
@@ -273,10 +279,10 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     await expectVisible(page, page.getByText('Training summary'));
     await expectVisible(page, page.getByText('Artifact metadata'));
     await expectVisible(page, page.getByText('Feature schema'));
-    await expectVisible(page, page.getByText('Thresholds'));
+    await expectVisible(page, page.getByText('Decision thresholds'));
+    await expectVisible(page, page.getByText('Display candidate'));
     await expectVisible(page, page.getByText('Promoted comparison'));
     await expectVisible(page, page.getByText('No promoted baseline yet.'));
-    await expectVisible(page, page.locator('.model-detail-grid').getByText('positive', { exact: true }));
 
     let failedPromoteIntercepted = false;
     await page.route('**/admin/models/*/promote', async (route) => {
@@ -296,6 +302,24 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     expect((await failedPromoteResponse).status()).toBe(500);
     await expectVisible(page, page.getByText('Promotion service unavailable.'));
     await page.unroute('**/admin/models/*/promote');
+
+    const [trainedModel] = await repository.listModels();
+    if (!trainedModel) throw new Error('Expected the dashboard workflow to create a model.');
+    await repository.saveModel({
+      ...trainedModel,
+      metrics: {
+        ...trainedModel.metrics,
+        thresholdsCalibrated: 1,
+        thresholdCalibrationExamples: 40,
+        thresholdCalibrationPositives: 20,
+        thresholdCalibrationNegatives: 20,
+        thresholdCalibrationGroups: 10,
+        positivePrecision: 0.95,
+        positiveRecall: 0.75,
+        reviewRecall: 0.98,
+        auc: 0.9
+      }
+    });
 
     const promoteResponse = page.waitForResponse((response) => response.url().includes('/admin/models/') && response.url().endsWith('/promote'));
     await page.getByRole('button', { name: 'Promote' }).click();

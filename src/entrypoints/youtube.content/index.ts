@@ -1,6 +1,6 @@
 import './style.css';
 import { createAutoSkipController, type AutoSkipDecision } from '../../core/auto-skip-controller';
-import { buildSegmentCandidates } from '../../core/analysis/evidence-fusion';
+import { buildSegmentCandidatePool } from '../../core/analysis/evidence-fusion';
 import { createProgressBarTracker, detectProgressBarCue } from '../../core/analysis/progress-bar-detector';
 import { detectQrCue } from '../../core/analysis/qr-detector';
 import { shouldScanQrFrame } from '../../core/analysis/qr-scan-cadence';
@@ -28,7 +28,7 @@ import {
 } from '../../core/model/active-candidate-model';
 import { createBoundedOwnedStatusWriter } from '../../core/owned-scan-status-writer';
 import { sendRuntimeMessageWithCallback } from '../../core/runtime-message';
-import { applyModelToCandidates } from '../../core/model/candidate-model';
+import { selectCandidateSegments } from '../../core/model/candidate-model';
 import {
   appendScanStatusEvidence,
   appendScanStatusEvent,
@@ -880,19 +880,26 @@ function createInactiveScanControl(error: string): ActiveScanControl {
 
 function updateCandidates(
   evidence: TimedEvidence[],
-  statusUi: { setCandidates(candidates: ReturnType<typeof buildSegmentCandidates>): void },
+  statusUi: { setCandidates(candidates: SegmentCandidate[]): void },
   activeModel: ActiveCandidateModelState,
   videoDurationSeconds: number | null,
   transcriptCues: readonly TranscriptCue[]
-): ReturnType<typeof buildSegmentCandidates> {
-  const candidates = applyModelToCandidates(buildSegmentCandidates(evidence), {
+): SegmentCandidate[] {
+  const selection = selectCandidateSegments(buildSegmentCandidatePool(evidence), {
     model: activeModel.model,
     modelSource: activeModel.modelSource,
     videoDurationSeconds,
     getTranscriptContext: (candidate) => getTranscriptContext(transcriptCues, candidate)
   });
+  const candidates = selection.displayedCandidates;
   statusUi.setCandidates(candidates);
-  logger.info('segment candidates updated', candidates);
+  logger.info('segment candidates updated', {
+    candidates,
+    positiveThreshold: selection.thresholds.positive,
+    reviewThreshold: selection.thresholds.review,
+    reviewCandidates: selection.reviewCandidates.length,
+    rejectedCandidates: selection.rejectedCandidates.length
+  });
   return candidates;
 }
 

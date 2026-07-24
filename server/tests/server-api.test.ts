@@ -351,7 +351,7 @@ describe('YapSkippr server API', () => {
     }
   });
 
-  test('review, training, promotion, latest model, and rollback work end to end', async () => {
+  test('review and training work end to end while unsafe tiny models cannot be promoted', async () => {
     const app = await buildServer({ adminToken: 'secret' });
 
     const positive = await app.inject({
@@ -410,15 +410,49 @@ describe('YapSkippr server API', () => {
       url: `/admin/models/${train.json().model.modelId}/promote`,
       headers: { 'x-admin-token': 'secret' }
     });
+    expect(promote.statusCode).toBe(409);
+    expect(promote.json()).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('Promotion blocked:'),
+      blockers: expect.arrayContaining([
+        expect.stringContaining('not calibrated'),
+        expect.stringContaining('Holdout calibration examples')
+      ])
+    });
+
+    await app.close();
+  });
+
+  test('promotes, serves, and rolls back a model that passes safety gates', async () => {
+    const repository = createMemoryRepository();
+    const safeModel = modelArtifact('model-safe', '2026.07.24.000000', {
+      thresholdsCalibrated: 1,
+      thresholdCalibrationExamples: 40,
+      thresholdCalibrationPositives: 20,
+      thresholdCalibrationNegatives: 20,
+      thresholdCalibrationGroups: 10,
+      positivePrecision: 0.95,
+      positiveRecall: 0.75,
+      reviewRecall: 0.98,
+      auc: 0.9
+    });
+    await repository.saveModel(safeModel);
+    const app = await buildServer({ adminToken: 'secret', repository });
+
+    const promote = await app.inject({
+      method: 'POST',
+      url: '/admin/models/model-safe/promote',
+      headers: { 'x-admin-token': 'secret' }
+    });
     expect(promote.statusCode).toBe(200);
 
     const latest = await app.inject({ method: 'GET', url: '/api/v1/model/latest' });
     expect(latest.statusCode).toBe(200);
-    expect(latest.json().modelId).toBe(train.json().model.modelId);
+    expect(latest.json().modelId).toBe('model-safe');
 
     const rollback = await app.inject({
       method: 'POST',
-      url: `/admin/models/${train.json().model.modelId}/rollback`,
+      url: '/admin/models/model-safe/rollback',
       headers: { 'x-admin-token': 'secret' }
     });
     expect(rollback.statusCode).toBe(200);
@@ -913,6 +947,20 @@ describe('YapSkippr server API', () => {
     expect(evaluationExport.json()).toEqual(evaluation.json());
     expect(evaluationExport.json()).toMatchObject({
       modelId: 'model-candidate',
+      thresholds: {
+        positive: 0.65,
+        review: 0.45
+      },
+      thresholdCalibration: {
+        mode: 'fallback',
+        examples: 0,
+        positive: {
+          threshold: 0.65
+        },
+        review: {
+          threshold: 0.45
+        }
+      },
       promotedComparison: {
         promotedModelId: 'model-promoted',
         metricDeltas: {
@@ -1010,8 +1058,8 @@ describe('YapSkippr server API', () => {
 
   test('rejects rollback for models that are not currently promoted', async () => {
     const repository = createMemoryRepository();
-    await repository.saveModel(modelArtifact('model-a', '2026.07.01.000001'));
-    await repository.saveModel(modelArtifact('model-b', '2026.07.01.000002'));
+    await repository.saveModel(modelArtifact('model-a', '2026.07.01.000001', promotionSafeMetricOverrides()));
+    await repository.saveModel(modelArtifact('model-b', '2026.07.01.000002', promotionSafeMetricOverrides()));
     const app = await buildServer({ adminToken: 'secret', repository });
 
     const promoteA = await app.inject({
@@ -1116,5 +1164,19 @@ function modelArtifact(modelId: string, version: string, metricOverrides: Record
       positives: 1,
       negatives: 1
     }
+  };
+}
+
+function promotionSafeMetricOverrides(): Record<string, number> {
+  return {
+    thresholdsCalibrated: 1,
+    thresholdCalibrationExamples: 40,
+    thresholdCalibrationPositives: 20,
+    thresholdCalibrationNegatives: 20,
+    thresholdCalibrationGroups: 10,
+    positivePrecision: 0.95,
+    positiveRecall: 0.75,
+    reviewRecall: 0.98,
+    auc: 0.9
   };
 }

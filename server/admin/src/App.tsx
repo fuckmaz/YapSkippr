@@ -145,6 +145,26 @@ interface PromotionRecord {
 interface ModelEvaluation {
   modelId: string;
   metrics: Record<string, number>;
+  thresholds: Record<string, number>;
+  thresholdCalibration: {
+    mode: 'validation' | 'fallback';
+    examples: number;
+    positives: number;
+    negatives: number;
+    groups: number;
+    positive: {
+      threshold: number | null;
+      precision: number | null;
+      recall: number | null;
+      f1: number | null;
+    };
+    review: {
+      threshold: number | null;
+      precision: number | null;
+      recall: number | null;
+      f1: number | null;
+    };
+  };
   trainingSetSummary: Record<string, number>;
   promotedComparison: null | {
     promotedModelId: string;
@@ -1085,7 +1105,6 @@ function ModelEvaluationPanel({ model, evaluation }: { model: ModelArtifact; eva
     .sort(([, a], [, b]) => Math.abs(b) - Math.abs(a))
     .slice(0, 10);
   const summary = Object.entries(evaluation.trainingSetSummary);
-  const thresholds = Object.entries(model.thresholds).sort(([a], [b]) => a.localeCompare(b));
   const comparison = Object.entries(evaluation.promotedComparison?.metricDeltas ?? {}).sort(([a], [b]) => a.localeCompare(b));
 
   return (
@@ -1120,9 +1139,20 @@ function ModelEvaluationPanel({ model, evaluation }: { model: ModelArtifact; eva
           </div>
         </section>
         <section>
-          <h3>Thresholds</h3>
+          <h3>Decision thresholds</h3>
           <div className="summary-list">
-            {thresholds.map(([label, value]) => <DetailRow key={label} label={label} value={formatMetric(value)} />)}
+            <DetailRow label="Display candidate" value={formatPercent(evaluation.thresholdCalibration.positive.threshold ?? undefined)} />
+            <DetailRow label="Review band" value={formatPercent(evaluation.thresholdCalibration.review.threshold ?? undefined)} />
+            <DetailRow
+              label="Calibration"
+              value={evaluation.thresholdCalibration.mode === 'validation' ? 'Validation-calibrated' : 'Conservative fallback'}
+            />
+            <DetailRow label="Calibration examples" value={evaluation.thresholdCalibration.examples} />
+            <DetailRow label="Positive / negative" value={`${evaluation.thresholdCalibration.positives} / ${evaluation.thresholdCalibration.negatives}`} />
+            <DetailRow label="Video groups" value={evaluation.thresholdCalibration.groups} />
+            <DetailRow label="Display precision" value={formatPercent(evaluation.thresholdCalibration.positive.precision ?? undefined)} />
+            <DetailRow label="Display recall" value={formatPercent(evaluation.thresholdCalibration.positive.recall ?? undefined)} />
+            <DetailRow label="Review recall" value={formatPercent(evaluation.thresholdCalibration.review.recall ?? undefined)} />
           </div>
         </section>
         <section>
@@ -1356,7 +1386,11 @@ function TrainingRunDetailPanel({
   promoted: ModelArtifact | null;
 }): ReactElement {
   const summary = model?.trainingSetSummary ?? {};
-  const comparison = promoted ? Object.entries(run.metrics).sort(([a], [b]) => a.localeCompare(b)) : [];
+  const comparison = promoted
+    ? Object.entries(run.metrics)
+        .filter(([metric]) => ['accuracy', 'precision', 'recall', 'f1', 'auc'].includes(metric))
+        .sort(([a], [b]) => a.localeCompare(b))
+    : [];
 
   return (
     <div className="training-run-detail-panel">
@@ -1370,6 +1404,9 @@ function TrainingRunDetailPanel({
               <DetailRow label="Train examples" value={formatOptionalMetric(summary.trainExamples)} />
               <DetailRow label="Positive examples" value={formatOptionalMetric(summary.positives)} />
               <DetailRow label="Negative examples" value={formatOptionalMetric(summary.negatives)} />
+              <DetailRow label="Validation positives" value={formatOptionalMetric(summary.validationPositives)} />
+              <DetailRow label="Validation negatives" value={formatOptionalMetric(summary.validationNegatives)} />
+              <DetailRow label="Validation groups" value={formatOptionalMetric(summary.validationGroups)} />
               <DetailRow label="Feature count" value={formatOptionalMetric(summary.featureCount)} />
             </div>
           </section>
@@ -1386,6 +1423,26 @@ function TrainingRunDetailPanel({
           <section>
             <h3>Validation metrics</h3>
             <MetricStrip metrics={run.metrics} />
+          </section>
+          <section>
+            <h3>Threshold calibration</h3>
+            <div className="summary-list">
+              <DetailRow label="Display candidate" value={formatPercent(model?.thresholds.positive)} />
+              <DetailRow label="Review band" value={formatPercent(model?.thresholds.review)} />
+              <DetailRow
+                label="Mode"
+                value={run.metrics.thresholdsCalibrated === 1 ? 'Validation-calibrated' : 'Conservative fallback'}
+              />
+              <DetailRow label="Calibration examples" value={formatOptionalMetric(run.metrics.thresholdCalibrationExamples)} />
+              <DetailRow
+                label="Positive / negative"
+                value={`${formatOptionalMetric(run.metrics.thresholdCalibrationPositives)} / ${formatOptionalMetric(run.metrics.thresholdCalibrationNegatives)}`}
+              />
+              <DetailRow label="Video groups" value={formatOptionalMetric(run.metrics.thresholdCalibrationGroups)} />
+              <DetailRow label="Display precision" value={formatPercent(run.metrics.positivePrecision)} />
+              <DetailRow label="Display recall" value={formatPercent(run.metrics.positiveRecall)} />
+              <DetailRow label="Review recall" value={formatPercent(run.metrics.reviewRecall)} />
+            </div>
           </section>
           <section>
             <h3>Comparison to promoted model</h3>

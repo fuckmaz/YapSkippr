@@ -23,7 +23,7 @@ YapSkippr analyzes the YouTube video you are currently watching and surfaces can
 
 The extension combines frame analysis and transcript signals so future versions can evolve toward more accurate, service-aware ad-read detection without tying the core logic to YouTube forever.
 
-YapSkippr now also includes a self-improving, non-LLM recognition loop. The extension still generates evidence with deterministic detectors, then optionally applies a promoted JSON logistic model fetched from your own server. Admin-reviewed feedback produces training examples; trained models are promoted manually before browser clients use them.
+YapSkippr now also includes a self-improving, non-LLM recognition loop. The extension still generates evidence with deterministic detectors, then optionally applies a promoted JSON logistic model fetched from your own server. Admin-reviewed feedback produces training examples; validation data calibrates precision-first display and recall-first review thresholds, and promotion safety gates run before browser clients can use a model.
 
 ## What It Detects
 
@@ -46,7 +46,7 @@ When evidence is found, YapSkippr fuses the signals into candidate segments and 
 - Lightweight status block mounted near the YouTube player with evidence counts and clickable candidate timecodes.
 - Console logging for lower-level debugging while the detector is still evolving.
 - Optional feedback API integration with v2 payloads that include an anonymous client ID, candidate features, evidence snapshots, transcript context, and model metadata.
-- Admin-only server dashboard for reviewing feedback, training models, inspecting metrics, and promoting or rolling back model artifacts.
+- Admin-only server dashboard for reviewing feedback, training models, inspecting calibrated thresholds and metrics, and safely promoting or rolling back model artifacts.
 - Chrome and Chromium support first, with a Firefox build available for local testing.
 
 ## How It Works
@@ -57,8 +57,8 @@ YouTube page
   -> transcript provider loads available caption tracks
   -> frame sampler captures visible video frames
   -> detectors extract transcript, progress-bar, QR, and visible-link evidence
-  -> evidence fusion creates candidate ad-read segments
-  -> optional promoted model recalibrates candidate confidence
+  -> evidence fusion creates a structurally safe candidate pool
+  -> optional promoted model scores the pool and applies its calibrated display threshold
   -> default-off skip controller may seek past a qualified bounded segment and offers Undo
   -> popup and page UI receive live status snapshots from extension storage
   -> reviewed feedback trains the next JSON model artifact on your server
@@ -177,7 +177,7 @@ Then open `http://localhost:8787/admin`, enter the admin token, review submitted
 http://localhost:8787/api/v1/feedback
 ```
 
-The content script derives `GET /api/v1/model/latest` from that endpoint, validates the model schema, caches compatible models, and falls back to heuristic confidence if the server is unavailable.
+The content script derives `GET /api/v1/model/latest` from that endpoint, validates the model schema and ordered positive/review thresholds, caches compatible models, and falls back to heuristic confidence if the server is unavailable. A trained model cannot be promoted unless its leakage-safe holdout has at least 20 examples, at least five examples from each class, and at least five video groups; its display precision/recall and review recall must also clear conservative minimums, its AUC must be acceptable, and it must not materially regress from the currently promoted model.
 
 After saving a valid feedback endpoint in Detailed mode, the popup also shows an `Open admin dashboard` shortcut for the same server origin.
 
@@ -213,7 +213,7 @@ src/
   ui/                   Popup, page status, badge, logging, and candidate presentation helpers.
 tests/
   unit/                 Detector, parser, status, and UI-model coverage.
-  e2e/                  Build-output smoke coverage.
+  e2e/                  Build-output plus packaged Chrome MV3 playback/model-threshold coverage.
 scripts/
   build-installable.mjs Local packaging helper for Chrome and Firefox artifacts.
 server/
