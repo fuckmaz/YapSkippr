@@ -11,6 +11,10 @@ export interface FeedbackRecord {
   review: ReviewRecord | null;
 }
 
+export interface FeedbackCreationResult extends FeedbackRecord {
+  created: boolean;
+}
+
 export interface ReviewRecord {
   id: string;
   feedbackId: string;
@@ -44,6 +48,7 @@ export interface PromotionRecord {
 
 export interface DashboardSummary {
   totalFeedback: number;
+  deduplicatedFeedback: number;
   uniqueClients: number;
   reviewedFeedback: number;
   pendingFeedback: number;
@@ -74,7 +79,7 @@ export interface DetectorQualityRow {
 }
 
 export interface YapSkipprRepository {
-  createFeedback(payload: FeedbackPayloadV2): Promise<FeedbackRecord>;
+  createFeedback(payload: FeedbackPayloadV2): Promise<FeedbackCreationResult>;
   listFeedback(): Promise<FeedbackRecord[]>;
   reviewFeedback(
     id: string,

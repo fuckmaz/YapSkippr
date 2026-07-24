@@ -151,6 +151,7 @@ let currentScanStatus: ScanStatusSnapshot = createIdleScanStatus();
 let ownedTabId: number | null = null;
 let stopScanStatusSubscription: (() => void) | undefined;
 let autoSkipPreferenceGeneration = 0;
+let anonymousClientIdPromise: Promise<string | null> | null = null;
 const feedbackSendControl = createFeedbackSendControl();
 const fastScanCapability = createScanCapabilityController({
   probe: sendScanCapabilityMessage,
@@ -923,7 +924,7 @@ async function submitMissedSegment(): Promise<void> {
     const response = await sendMissedSegmentContextMessage(getOwnedTabId(), startSeconds, endSeconds);
     if (!response.ok) throw new Error(response.error ?? 'The YouTube tab could not capture this segment.');
     const { ok: _ok, error: _error, ...context } = response;
-    const sent = await sendFeedbackPayload({
+    const outcome = await sendFeedbackPayload({
       videoUrl: currentScanStatus.pageUrl,
       videoId: currentScanStatus.videoId,
       occurrenceId: `missed-${currentScanStatus.videoId}-${Math.round(startSeconds * 10)}-${Math.round(endSeconds * 10)}`,
@@ -936,11 +937,15 @@ async function submitMissedSegment(): Promise<void> {
       feedback: 'missed_context',
       ...context
     }, missedSegmentSubmit, setMissedSegmentStatus);
-    if (sent) {
+    if (outcome) {
       if (missedSegmentStart) missedSegmentStart.value = '';
       if (missedSegmentEnd) missedSegmentEnd.value = '';
       setMissedSegmentFormOpen(false);
-      setMissedSegmentStatus('Missed segment sent. Thank you.');
+      setMissedSegmentStatus(
+        outcome === 'deduplicated'
+          ? 'This missed segment was already received.'
+          : 'Missed segment sent. Thank you.'
+      );
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -980,18 +985,18 @@ async function sendFeedbackPayload(
   input: FeedbackPayloadInput,
   trigger: HTMLButtonElement | null,
   setStatus: (message: string) => void
-): Promise<boolean> {
+): Promise<'created' | 'deduplicated' | null> {
   if (!feedbackSendControl.isAuthorized()) {
     setStatus('Feedback sharing is off. Turn it on before sending a report.');
     presentFeedbackConsentRequired('Feedback sharing is off. Turn it on before sending a report.');
-    return false;
+    return null;
   }
   if (!feedbackSendControl.getEndpoint()) {
     setStatus('Set and save a feedback API endpoint in Detailed mode first.');
     setFeedbackStatus('Set and save a feedback API endpoint in Detailed mode first.');
     setDetailedMode(true);
     feedbackEndpointInput?.focus();
-    return false;
+    return null;
   }
 
   const payloadSnapshot = JSON.stringify(createOccurrenceFeedbackPayload(input, Date.now()));
@@ -999,7 +1004,7 @@ async function sendFeedbackPayload(
   if (!lease) {
     setStatus('Feedback sharing changed before the report could start.');
     presentFeedbackConsentRequired('Feedback sharing changed before the report could start.');
-    return false;
+    return null;
   }
 
   if (trigger) trigger.disabled = true;
@@ -1012,7 +1017,7 @@ async function sendFeedbackPayload(
       revokeFeedbackAuthorization(createFeedbackConsentStatus(authorization));
       setStatus(createFeedbackConsentStatus(authorization));
       presentFeedbackConsentRequired(createFeedbackConsentStatus(authorization));
-      return false;
+      return null;
     }
 
     const endpointAccess = await containsFeedbackEndpointAccess(lease.endpoint);
@@ -1022,7 +1027,7 @@ async function sendFeedbackPayload(
       setStatus('Feedback was not sent. Press Save beside the endpoint to grant access to its origin.');
       setFeedbackStatus('Feedback was not sent. Press Save beside the endpoint to grant access to its origin.');
       feedbackEndpointInput?.focus();
-      return false;
+      return null;
     }
 
     const clientId = await loadAnonymousClientId(lease);
@@ -1034,7 +1039,7 @@ async function sendFeedbackPayload(
       revokeFeedbackAuthorization(createFeedbackConsentStatus(sendAuthorization));
       setStatus(createFeedbackConsentStatus(sendAuthorization));
       presentFeedbackConsentRequired(createFeedbackConsentStatus(sendAuthorization));
-      return false;
+      return null;
     }
 
     const payload = JSON.parse(payloadSnapshot) as ReturnType<typeof createOccurrenceFeedbackPayload>;
@@ -1050,13 +1055,15 @@ async function sendFeedbackPayload(
     if (!response.ok) {
       throw new Error(`Server returned HTTP ${response.status}.`);
     }
-    setStatus('Feedback sent.');
-    return true;
+    const responseBody = await response.json().catch(() => null) as { deduplicated?: unknown } | null;
+    const outcome = responseBody?.deduplicated === true ? 'deduplicated' : 'created';
+    setStatus(outcome === 'deduplicated' ? 'Feedback already received.' : 'Feedback sent.');
+    return outcome;
   } catch (error) {
-    if (isFeedbackSendInvalidatedError(error) || !feedbackSendControl.isCurrent(lease)) return false;
+    if (isFeedbackSendInvalidatedError(error) || !feedbackSendControl.isCurrent(lease)) return null;
     const message = error instanceof Error ? error.message : String(error);
     setStatus(`Feedback failed: ${message}`);
-    return false;
+    return null;
   } finally {
     feedbackSendControl.finish(lease);
     if (trigger) trigger.disabled = false;
@@ -1248,21 +1255,25 @@ function getFeedbackContext(
 }
 
 async function loadAnonymousClientId(lease: FeedbackSendLease): Promise<string | null> {
+  feedbackSendControl.assertCurrent(lease);
+  anonymousClientIdPromise ??= loadOrCreateAnonymousClientId();
   try {
-    feedbackSendControl.assertCurrent(lease);
-    const stored = await getLocalStorageValue(CLIENT_ID_STORAGE_KEY);
-    feedbackSendControl.assertCurrent(lease);
-    if (isValidClientId(stored)) return stored;
-
-    feedbackSendControl.assertCurrent(lease);
-    const clientId = createAnonymousClientId();
-    await setLocalStorageValue(CLIENT_ID_STORAGE_KEY, clientId);
+    const clientId = await anonymousClientIdPromise;
     feedbackSendControl.assertCurrent(lease);
     return clientId;
   } catch (error) {
     if (isFeedbackSendInvalidatedError(error)) throw error;
+    anonymousClientIdPromise = null;
     return null;
   }
+}
+
+async function loadOrCreateAnonymousClientId(): Promise<string | null> {
+  const stored = await getLocalStorageValue(CLIENT_ID_STORAGE_KEY);
+  if (isValidClientId(stored)) return stored;
+  const clientId = createAnonymousClientId();
+  await setLocalStorageValue(CLIENT_ID_STORAGE_KEY, clientId);
+  return clientId;
 }
 
 function createAnonymousClientId(): string {

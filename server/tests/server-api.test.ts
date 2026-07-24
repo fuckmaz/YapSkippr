@@ -204,6 +204,66 @@ describe('YapSkippr server API', () => {
     await app.close();
   });
 
+  test('deduplicates semantic client retries without collapsing distinct judgments', async () => {
+    const app = await buildServer({ adminToken: 'secret' });
+    const payload = feedbackFixture({
+      clientId: 'client-idempotency',
+      occurrenceId: 'candidate-idempotency'
+    });
+    const first = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload
+    });
+    const retry = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: {
+        ...payload,
+        createdAt: '2026-07-24T12:00:00.000Z',
+        modelVersion: 'transport-retry-newer-model'
+      }
+    });
+    const changedJudgment = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: {
+        ...payload,
+        createdAt: '2026-07-24T12:01:00.000Z',
+        feedback: 'false_positive'
+      }
+    });
+
+    expect(first.statusCode).toBe(201);
+    expect(first.json()).toMatchObject({ deduplicated: false });
+    expect(retry.statusCode).toBe(200);
+    expect(retry.json()).toEqual({
+      ok: true,
+      feedbackId: first.json().feedbackId,
+      deduplicated: true
+    });
+    expect(changedJudgment.statusCode).toBe(201);
+    expect(changedJudgment.json().feedbackId).not.toBe(first.json().feedbackId);
+
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/admin/api/feedback',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    expect(listed.json().items).toHaveLength(2);
+    const summary = await app.inject({
+      method: 'GET',
+      url: '/admin/api/summary',
+      headers: { 'x-admin-token': 'secret' }
+    });
+    expect(summary.json()).toMatchObject({
+      totalFeedback: 2,
+      deduplicatedFeedback: 1
+    });
+
+    await app.close();
+  });
+
   test('rate limits public feedback submissions with retry headers', async () => {
     const app = await buildServer({
       adminToken: 'secret',

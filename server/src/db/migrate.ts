@@ -1,4 +1,6 @@
 import { Pool } from 'pg';
+import { buildFeedbackDeduplicationKey } from '../feedback/deduplication.js';
+import { feedbackPayloadV2Schema } from '../feedback/schema.js';
 
 export async function runMigrations(databaseUrl: string): Promise<void> {
   const pool = new Pool({ connectionString: databaseUrl });
@@ -8,7 +10,8 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
         id text primary key,
         received_at timestamptz not null,
         payload jsonb not null,
-        review jsonb
+        review jsonb,
+        deduplication_key text
       );
 
       create table if not exists training_examples (
@@ -54,6 +57,30 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
       create index if not exists feedback_events_received_at_idx on feedback_events (received_at desc);
       create index if not exists training_examples_feedback_id_idx on training_examples (feedback_id);
       create index if not exists promotion_history_promoted_at_idx on promotion_history (promoted_at desc);
+    `);
+    await pool.query('alter table feedback_events add column if not exists deduplication_key text');
+    const feedbackRows = await pool.query(
+      'select id, payload, deduplication_key from feedback_events order by received_at asc, id asc'
+    );
+    const assignedKeys = new Set<string>(
+      feedbackRows.rows.flatMap((row) => typeof row.deduplication_key === 'string' ? [row.deduplication_key] : [])
+    );
+    for (const row of feedbackRows.rows) {
+      if (row.deduplication_key) continue;
+      const payload = feedbackPayloadV2Schema.safeParse(row.payload);
+      if (!payload.success) continue;
+      const key = buildFeedbackDeduplicationKey(payload.data);
+      if (!key || assignedKeys.has(key)) continue;
+      const updated = await pool.query(
+        'update feedback_events set deduplication_key = $2 where id = $1 and deduplication_key is null',
+        [row.id, key]
+      );
+      if ((updated.rowCount ?? 0) > 0) assignedKeys.add(key);
+    }
+    await pool.query(`
+      create unique index if not exists feedback_events_deduplication_key_unique_idx
+        on feedback_events (deduplication_key)
+        where deduplication_key is not null;
     `);
     await pool.query('alter table training_examples add column if not exists feature_schema_version integer');
     await pool.query(`

@@ -83,6 +83,7 @@ describe('YapSkippr admin dashboard browser workflow', () => {
 
     await expectVisible(page, page.getByRole('heading', { name: 'Overview' }));
     await expectVisible(page, page.getByText('Total Feedback'));
+    await expectVisible(page, page.getByText('Retries Merged'));
     await expectVisible(page, page.getByText('Reporting Clients'));
     await expectVisible(page, page.getByText('2', { exact: true }).first());
     await expectVisible(page, page.getByRole('heading', { name: 'Review Queue' }));

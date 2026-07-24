@@ -1,4 +1,5 @@
 import type { FeedbackPayloadV2 } from '../feedback/schema.js';
+import { buildFeedbackDeduplicationKey } from '../feedback/deduplication.js';
 import { summarizeTrainingReadiness } from '../model/training-readiness.js';
 import type { CandidateModelArtifact, LabeledTrainingExample } from '../model/types.js';
 import { buildDetectorQuality } from './detector-quality.js';
@@ -15,11 +16,13 @@ import type {
 
 export function createMemoryRepository(now: () => string = () => new Date().toISOString()): YapSkipprRepository {
   const feedback: FeedbackRecord[] = [];
+  const feedbackByDeduplicationKey = new Map<string, FeedbackRecord>();
   const trainingExamples: LabeledTrainingExample[] = [];
   const models: CandidateModelArtifact[] = [];
   const trainingRuns: TrainingRunRecord[] = [];
   const promotions: PromotionRecord[] = [];
   let promotedModelId: string | null = null;
+  let deduplicatedFeedback = 0;
   let counter = 0;
 
   function nextId(prefix: string): string {
@@ -29,6 +32,15 @@ export function createMemoryRepository(now: () => string = () => new Date().toIS
 
   return {
     async createFeedback(payload: FeedbackPayloadV2) {
+      const deduplicationKey = buildFeedbackDeduplicationKey(payload);
+      const existing = deduplicationKey
+        ? feedbackByDeduplicationKey.get(deduplicationKey)
+        : undefined;
+      if (existing) {
+        deduplicatedFeedback += 1;
+        return { ...existing, created: false };
+      }
+
       const record: FeedbackRecord = {
         id: nextId('fb'),
         receivedAt: now(),
@@ -36,7 +48,8 @@ export function createMemoryRepository(now: () => string = () => new Date().toIS
         review: null
       };
       feedback.unshift(record);
-      return record;
+      if (deduplicationKey) feedbackByDeduplicationKey.set(deduplicationKey, record);
+      return { ...record, created: true };
     },
 
     async listFeedback() {
@@ -156,6 +169,7 @@ export function createMemoryRepository(now: () => string = () => new Date().toIS
 
       return {
         totalFeedback: feedback.length,
+        deduplicatedFeedback,
         uniqueClients: countUniqueClients(feedback),
         reviewedFeedback: reviewed.length,
         pendingFeedback: feedback.length - reviewed.length,

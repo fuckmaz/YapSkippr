@@ -56,4 +56,15 @@ describe('deployment artifacts', () => {
     expect(deployReadme).toContain('backup-postgres.sh');
     expect(deployReadme).toContain('127.0.0.1:${YAPSKIPPR_HOST_PORT:-8787}');
   });
+
+  test('ships Postgres feedback idempotency schema and conflict handling', () => {
+    const migration = read('server/src/db/migrate.ts');
+    const repository = read('server/src/store/postgres.ts');
+
+    expect(migration).toContain('deduplication_key text');
+    expect(migration).toContain('feedback_events_deduplication_key_unique_idx');
+    expect(migration).toContain('where deduplication_key is not null');
+    expect(repository).toContain('on conflict (deduplication_key)');
+    expect(repository).toContain('created: false');
+  });
 });

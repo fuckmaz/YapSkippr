@@ -208,8 +208,10 @@ test('submits a first-class missed segment with live detector context from the p
       [FEEDBACK_CONSENT_STORAGE_KEY]: true
     });
     let submittedPayload: Record<string, unknown> | null = null;
+    let submittedCount = 0;
     await installYouTubeFixtureRoutes(context, SUPPRESSING_MODEL, (payload) => {
       submittedPayload = payload;
+      submittedCount += 1;
     });
     const youtubePage = await context.newPage();
     await youtubePage.goto(WATCH_URL, { waitUntil: 'domcontentloaded' });
@@ -246,6 +248,16 @@ test('submits a first-class missed segment with live detector context from the p
       candidateFeatures: expect.objectContaining({ transcriptStartCount: expect.any(Number) }),
       transcriptContext: expect.stringContaining("Today's sponsor is Acme.")
     });
+
+    await popupPage.getByRole('button', { name: 'Report' }).click();
+    await popupPage.getByLabel('Start', { exact: true }).fill('0:00');
+    await popupPage.getByLabel('End', { exact: true }).fill('0:08');
+    await popupPage.getByRole('button', { name: 'Send segment' }).click();
+    await expect(popupPage.locator('#missed-segment-status')).toHaveText(
+      'This missed segment was already received.',
+      { timeout: 10_000 }
+    );
+    expect(submittedCount).toBe(2);
   } finally {
     await context.close();
   }
@@ -267,6 +279,7 @@ async function installYouTubeFixtureRoutes(
   onFeedback?: (payload: Record<string, unknown>) => void
 ): Promise<void> {
   const videoBody = Buffer.from(VIDEO_BASE64, 'base64');
+  let feedbackSubmissionCount = 0;
   await context.route('https://www.youtube.com/**', async (route) => {
     const url = new URL(route.request().url());
 
@@ -301,11 +314,16 @@ async function installYouTubeFixtureRoutes(
     }
 
     if (url.pathname === '/api/v1/feedback' && route.request().method() === 'POST') {
+      feedbackSubmissionCount += 1;
       onFeedback?.(route.request().postDataJSON() as Record<string, unknown>);
       await route.fulfill({
-        status: 201,
+        status: feedbackSubmissionCount === 1 ? 201 : 200,
         contentType: 'application/json',
-        body: JSON.stringify({ ok: true, feedbackId: 'feedback-runtime-missed' })
+        body: JSON.stringify({
+          ok: true,
+          feedbackId: 'feedback-runtime-missed',
+          deduplicated: feedbackSubmissionCount > 1
+        })
       });
       return;
     }

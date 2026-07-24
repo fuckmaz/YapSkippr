@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Pool, type PoolClient } from 'pg';
 import type { FeedbackPayloadV2 } from '../feedback/schema.js';
+import { buildFeedbackDeduplicationKey } from '../feedback/deduplication.js';
 import { summarizeTrainingReadiness } from '../model/training-readiness.js';
 import type { CandidateModelArtifact, LabeledTrainingExample } from '../model/types.js';
 import { buildDetectorQuality } from './detector-quality.js';
@@ -19,17 +20,40 @@ export function createPostgresRepository(databaseUrl: string): YapSkipprReposito
 
   return {
     async createFeedback(payload) {
+      const deduplicationKey = buildFeedbackDeduplicationKey(payload);
       const record: FeedbackRecord = {
         id: `fb_${randomUUID()}`,
         receivedAt: new Date().toISOString(),
         payload,
         review: null
       };
-      await pool.query(
-        'insert into feedback_events (id, received_at, payload, review) values ($1, $2, $3, $4)',
-        [record.id, record.receivedAt, record.payload, null]
+      const inserted = await pool.query(
+        `insert into feedback_events (id, received_at, payload, review, deduplication_key)
+         values ($1, $2, $3, $4, $5)
+         on conflict (deduplication_key) where deduplication_key is not null do nothing
+         returning id`,
+        [record.id, record.receivedAt, record.payload, null, deduplicationKey]
       );
-      return record;
+      if ((inserted.rowCount ?? 0) > 0) return { ...record, created: true };
+      if (!deduplicationKey) throw new Error('Feedback insert did not return a row.');
+      await pool.query(`
+        insert into app_state (key, value)
+        values ('deduplicatedFeedback', jsonb_build_object('count', 1))
+        on conflict (key) do update
+          set value = jsonb_build_object(
+            'count',
+            coalesce((app_state.value ->> 'count')::integer, 0) + 1
+          )
+      `);
+
+      const existing = await pool.query(
+        'select id, received_at, payload, review from feedback_events where deduplication_key = $1',
+        [deduplicationKey]
+      );
+      if ((existing.rowCount ?? 0) === 0) {
+        throw new Error('Feedback deduplication conflict did not resolve to an existing record.');
+      }
+      return { ...feedbackFromRow(existing.rows[0]), created: false };
     },
 
     async listFeedback() {
@@ -197,9 +221,14 @@ export function createPostgresRepository(databaseUrl: string): YapSkipprReposito
       const models = await this.listModels();
       const promotedModel = await this.getPromotedModel();
       const trainingExamples = await this.listTrainingExamples();
+      const deduplicationState = await pool.query(
+        "select value from app_state where key = 'deduplicatedFeedback'"
+      );
+      const deduplicatedFeedback = Number(deduplicationState.rows[0]?.value?.count ?? 0);
       const reviewed = feedback.filter((item) => item.review);
       return {
         totalFeedback: feedback.length,
+        deduplicatedFeedback: Number.isFinite(deduplicatedFeedback) ? deduplicatedFeedback : 0,
         uniqueClients: countUniqueClients(feedback),
         reviewedFeedback: reviewed.length,
         pendingFeedback: feedback.length - reviewed.length,

@@ -113,8 +113,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
       if (!parsed.success) {
         return reply.status(400).send({ ok: false, error: 'Invalid feedback payload.', details: parsed.error.flatten() });
       }
-      const record = await repository.createFeedback(parsed.data);
-      return reply.status(201).send({ ok: true, feedbackId: record.id });
+      const result = await repository.createFeedback(parsed.data);
+      return reply.status(result.created ? 201 : 200).send({
+        ok: true,
+        feedbackId: result.id,
+        deduplicated: !result.created
+      });
     }
   );
 

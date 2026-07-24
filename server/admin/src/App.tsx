@@ -226,6 +226,7 @@ interface DetectorQualityRow {
 
 interface Summary {
   totalFeedback: number;
+  deduplicatedFeedback: number;
   uniqueClients: number;
   reviewedFeedback: number;
   pendingFeedback: number;
@@ -491,6 +492,7 @@ function Overview({ data, onPageChange }: { data: DashboardData; onPageChange: (
       <PageTitle title="Overview" description="System health, usage, feedback quality, and promoted model performance." />
       <div className="metric-grid">
         <MetricCard icon={Database} label="Total Feedback" value={summary?.totalFeedback ?? 0} accent="blue" detail="All submitted reports" />
+        <MetricCard icon={Shield} label="Retries Merged" value={summary?.deduplicatedFeedback ?? 0} accent="slate" detail="Duplicate-safe ingestion" />
         <MetricCard icon={Users} label="Reporting Clients" value={summary?.uniqueClients ?? 0} accent="orange" detail="Anonymous installs" />
         <MetricCard icon={CheckCircle2} label="Reviewed" value={summary?.reviewedFeedback ?? 0} accent="green" detail="Admin labeled" />
         <MetricCard icon={TimerReset} label="Pending Review" value={summary?.pendingFeedback ?? 0} accent="yellow" detail="Queue size" />

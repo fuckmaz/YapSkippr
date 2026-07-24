@@ -49,6 +49,8 @@ When evidence is found, YapSkippr fuses the signals into candidate segments and 
 - Admin-only server dashboard for reviewing feedback, training models, inspecting calibrated thresholds and metrics, and safely promoting or rolling back model artifacts.
 - Structured wrong-timing review with corrected start/end boundaries, distinct-video holdout evaluation, source-specific offsets, and automatic rejection when calibration does not reduce boundary error.
 - First-class missed-segment feedback that snapshots live detector evidence and nearby transcript context. Zero-evidence reports remain reviewable but are intentionally excluded from confidence training.
+- Idempotent feedback ingestion keyed by anonymous client, video occurrence, boundaries, and judgment. Transport retries return the original feedback ID instead of inflating review and training counts.
+- Admin overview reporting for merged retry attempts, making duplicate protection visible in production.
 - Chrome and Chromium support first, with a Firefox build available for local testing.
 
 ## How It Works
@@ -161,6 +163,8 @@ The server package lives in `server/` and provides:
 - PostgreSQL persistence when `DATABASE_URL` is set, with an in-memory fallback for local development and tests.
 
 Feedback payload model metadata uses the closed `modelSource` values `bundled`, `downloaded`, or `fallback`; unknown values are rejected so admin analytics and training data stay consistent. Candidate reports include both start and end boundaries. A `wrong_timing` admin review must provide a corrected start and optional end; those corrections remain separate from confidence labels and are visible in dataset exports.
+
+Successful new feedback returns HTTP `201` with `deduplicated: false`. A semantic retry from the same anonymous client returns HTTP `200`, the original `feedbackId`, and `deduplicated: true`. Different labels or segment boundaries remain independent judgments.
 
 Local development:
 
