@@ -105,13 +105,13 @@ export function createScanCapabilityController(
 
       render({
         enabled: false,
-        message: response.error ?? 'Fast pre-scan is not ready in this tab.'
+        message: response.error ?? 'The selected visual-check interval is not ready in this tab.'
       });
       scheduleRetry(input, expectedGeneration);
     } catch (error) {
       if (!isCurrent(expectedGeneration, input)) return;
       const message = error instanceof Error ? error.message : String(error);
-      render({ enabled: false, message: `Fast pre-scan unavailable: ${message}` });
+      render({ enabled: false, message: `Visual-check interval unavailable: ${message}` });
       scheduleRetry(input, expectedGeneration);
     } finally {
       if (isCurrent(expectedGeneration, input)) probing = false;
@@ -133,8 +133,8 @@ export function createScanCapabilityController(
           render({
             enabled: false,
             message: input.phase === 'starting'
-              ? 'Fast pre-scan will be available when the player is ready.'
-              : 'Fast pre-scan is available while a scan is running.'
+              ? 'Interval controls will be available when the player is ready.'
+              : 'Interval controls are available while detection is running.'
           });
         } else {
           options.render(lastView);
@@ -154,7 +154,7 @@ export function createScanCapabilityController(
         if (lastView) options.render(lastView);
         return;
       }
-      render({ enabled: false, message: 'Checking fast pre-scan readiness...' });
+      render({ enabled: false, message: 'Checking visual-check interval support...' });
       void runProbe(input, generation);
     },
 

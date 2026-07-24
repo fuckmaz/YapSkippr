@@ -70,13 +70,13 @@ test('formats a running scan snapshot for the popup', () => {
   };
 
   expect(createPopupScanStatusView(snapshot, 6_000)).toEqual({
-    title: 'YouTube scan',
-    phaseLabel: 'Frames',
-    message: 'Analyzing frames... 12 sampled',
+    title: 'YouTube video',
+    phaseLabel: 'Visual checks',
+    message: 'Checking the video for visual ad-read signs · 12 checks complete',
     progressPercent: 50,
     progressText: '50%',
-    sampleCountText: '12 frames',
-    candidateCountText: '2 candidates',
+    sampleCountText: '12 visual checks',
+    candidateCountText: '2 possible ad reads',
     videoTimeText: '1:33 / 10:12',
     modelText: 'model-local-1 · 2026.07.07 · downloaded',
     evidenceItems: [
@@ -85,12 +85,14 @@ test('formats a running scan snapshot for the popup', () => {
       { label: 'QR', value: '1' },
       { label: 'Links', value: '1' }
     ],
-    fastScanText: 'Fast pre-scan on · 2s interval',
+    fastScanText: 'Visual checks · every 2s',
     candidates: [
       {
         id: 'candidate-72',
-        summary: '1:12-2:12 · 86% · transcript + QR',
-        detail: '86% model · 72% heuristic · transcript + QR',
+        summary: '1:12–2:12 · transcript + QR',
+        detail: 'Detector score: 86% model · 72% heuristic',
+        feedbackSummary: '1:12-2:12 · 86% · transcript + QR',
+        feedbackReason: '86% model · 72% heuristic · transcript + QR',
         seekSeconds: 72,
         endSeconds: 132,
         actionLabel: 'Jump to 1:12'
@@ -112,7 +114,7 @@ test('formats a running scan snapshot for the popup', () => {
         kindLabel: 'Presence',
         timeLabel: '1:35',
         startSeconds: 95,
-        confidenceText: '72%',
+        confidenceText: 'Detector score: 72%',
         reason: 'Detected visible HTTP link in sampled video frame.',
         detail: 'https://brand.example/deal'
       }
@@ -158,14 +160,15 @@ test('formats idle scan state for the popup', () => {
   };
 
   expect(createPopupScanStatusView(snapshot, 80_000)).toMatchObject({
-    title: 'No active scan',
+    title: 'No active video',
     phaseLabel: 'Idle',
+    message: 'Open a YouTube video to start detecting ad reads.',
     progressText: '0%',
-    sampleCountText: '0 frames',
-    candidateCountText: '0 candidates',
+    sampleCountText: '0 visual checks',
+    candidateCountText: '0 possible ad reads',
     videoTimeText: 'No video timing',
     modelText: 'Heuristic fallback',
-    fastScanText: 'Fast pre-scan off',
+    fastScanText: 'Standard visual checks · every 5s',
     candidates: [],
     events: [],
     evidenceEvents: [],
@@ -242,9 +245,37 @@ test('labels stale running scan state in the popup', () => {
   };
 
   expect(createPopupScanStatusView(snapshot, 30_000)).toMatchObject({
-    title: 'YouTube scan',
+    title: 'YouTube video',
     phaseLabel: 'Stale',
     updatedText: 'Updated 29s ago',
     isRunning: false
   });
+});
+
+test('maps technical Basic status text while preserving useful error details', () => {
+  const technicalSnapshot: ScanStatusSnapshot = {
+    ...createIdleScanStatus(1_000),
+    platformId: 'youtube',
+    videoId: 'abc123',
+    pageUrl: 'https://www.youtube.com/watch?v=abc123',
+    phase: 'starting',
+    message: 'Loading active recognition model...'
+  };
+  expect(createPopupScanStatusView(technicalSnapshot, 2_000).message).toBe('Getting detection ready...');
+
+  const errorSnapshot: ScanStatusSnapshot = {
+    ...technicalSnapshot,
+    phase: 'error',
+    message: 'Recognition model failed after analyzing frames: HTTP 503.'
+  };
+  expect(createPopupScanStatusView(errorSnapshot, 2_000).message)
+    .toBe('detector failed after checking the video: HTTP 503.');
+
+  const frameCaptureErrorSnapshot: ScanStatusSnapshot = {
+    ...technicalSnapshot,
+    phase: 'error',
+    message: 'Visual checks are unavailable; caption-based detection continues.'
+  };
+  expect(createPopupScanStatusView(frameCaptureErrorSnapshot, 2_000).message)
+    .toBe('Visual checks are unavailable; caption-based detection continues.');
 });

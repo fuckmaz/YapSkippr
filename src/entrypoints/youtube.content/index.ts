@@ -671,7 +671,7 @@ async function startYapSkipprScan(
         if (isExtensionContextInvalidatedError(error)) {
           logger.warn('frame sampling stopped because extension context was invalidated', error.message);
           setScanProgress(
-            'Extension reloaded. Reload this YouTube tab to resume frame analysis.',
+            'Extension reloaded. Reload this YouTube tab to resume visual checks.',
             scanStatus.progress,
             'error',
             {},
@@ -694,7 +694,7 @@ async function startYapSkipprScan(
         }
         logger.warn('frame sampling failed', error.message);
         setScanProgress(
-          'Frame capture unavailable; transcript scan continues.',
+          'Visual checks are unavailable; caption-based detection continues.',
           scanStatus.progress,
           'error',
           {},
@@ -737,8 +737,8 @@ async function startYapSkipprScan(
       restartFrameSampling();
 
       const message = fastScanEnabled
-        ? `Fast pre-scan running every ${fastScanIntervalSeconds}s.`
-        : 'Fast pre-scan stopped; background scan continues every 5s.';
+        ? `Visual checks now run every ${fastScanIntervalSeconds}s.`
+        : 'Visual checks returned to the standard 5s interval.';
       setScanProgress(
         message,
         scanStatus.progress,
@@ -746,7 +746,7 @@ async function startYapSkipprScan(
         { fastScanEnabled, fastScanIntervalSeconds },
         {
           level: 'info',
-          message: fastScanEnabled ? 'Fast pre-scan started' : 'Fast pre-scan stopped',
+          message: fastScanEnabled ? 'Visual-check interval changed' : 'Standard visual-check interval restored',
           detail: fastScanEnabled ? `${fastScanIntervalSeconds}s frame interval` : '5s frame interval'
         }
       );
@@ -761,7 +761,7 @@ async function startYapSkipprScan(
         level: 'info',
         message: enabled ? 'Auto-skip enabled' : 'Auto-skip disabled',
         detail: enabled
-          ? 'Only high-confidence segments with detected endings will be skipped.'
+          ? 'Auto-skip uses the configured detector score and requires a detected ending.'
           : 'Detected segments will not change playback automatically.'
       });
     },
@@ -861,7 +861,7 @@ async function startYapSkipprScan(
       {
         level: 'info',
         message: 'Scan complete',
-        detail: `${sampleCount} frames sampled, ${evidence.length} evidence hits`
+        detail: `${sampleCount} visual checks completed, ${evidence.length} signal hits`
       }
     );
     return true;

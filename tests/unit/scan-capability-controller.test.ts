@@ -28,7 +28,7 @@ test('keeps startup disabled and retries a false readiness probe on a bounded ti
   controller.update({ tabId: 7, sessionKey: 'video-a', phase: 'starting' });
   expect(views.at(-1)).toEqual({
     enabled: false,
-    message: 'Fast pre-scan will be available when the player is ready.'
+    message: 'Interval controls will be available when the player is ready.'
   });
   expect(probes).toBe(0);
 

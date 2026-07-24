@@ -198,7 +198,11 @@ async function expectBuiltScripts(outputPath: string): Promise<void> {
   expect(contentScript).toContain('yapskippr.autoSkipEnabled');
   expect(contentScript).toContain('Auto-skipped detected ad read');
   expect(contentScript).toContain('Auto-skip undone');
-  expect(contentScript).toContain('Only high-confidence segments with detected endings will be skipped.');
+  expect(contentScript).toContain('Auto-skip uses the configured detector score and requires a detected ending.');
+  expect(contentScript).toContain('Visual checks returned to the standard 5s interval.');
+  expect(contentScript).toContain('Visual checks are unavailable; caption-based detection continues.');
+  expect(contentScript).not.toContain('Frame capture unavailable; transcript scan continues.');
+  expect(contentScript).not.toContain('Fast pre-scan');
   expect(contentScript).toContain('aria-live');
   expect(contentScript).toContain('aria-atomic');
   expect(contentScript).not.toContain('.innerHTML=');
@@ -219,17 +223,20 @@ async function expectBuiltScripts(outputPath: string): Promise<void> {
   expect(backgroundScript).toMatch(/setTitle\(\{tabId:/);
 
   const popupHtml = await readFile(join(process.cwd(), outputPath, 'popup.html'), 'utf8');
-  expect(popupHtml).toContain('Grant frame capture access');
-  expect(popupHtml).toContain('Current scan');
-  expect(popupHtml).toContain('Fast pre-scan');
+  expect(popupHtml).toContain('Allow on all websites');
+  expect(popupHtml).toContain('requests access on all websites');
+  expect(popupHtml).toContain('Detection status');
+  expect(popupHtml).toContain('Open a YouTube video to find ad reads.');
+  expect(popupHtml).toContain('Visual check interval');
   expect(popupHtml).toMatch(/id="fast-scan-toggle"[^>]*disabled/);
-  expect(popupHtml).toContain('Evidence');
+  expect(popupHtml).toContain('Detection signals');
+  expect(popupHtml).toContain('Progress bar');
   expect(popupHtml).toContain('Auto-skip');
-  expect(popupHtml).toContain('High-confidence segments with a detected ending only.');
+  expect(popupHtml).toContain('Skips only detected ad reads that include a detected ending.');
   expect(popupHtml).toContain('Missed an ad read?');
-  expect(popupHtml).toContain('Teach YapSkippr the segment it overlooked.');
+  expect(popupHtml).toContain('Report the missed segment to help improve future detection.');
   expect(popupHtml).toMatch(/id="auto-skip-toggle"[^>]*aria-pressed="false"[^>]*disabled/);
-  expect(popupHtml).toContain('Detailed mode');
+  expect(popupHtml).toContain('Advanced');
   expect(popupHtml).toContain('Share feedback');
   expect(popupHtml).toMatch(/id="feedback-consent"[^>]*disabled/);
   expect(popupHtml).toContain('Off by default');
@@ -242,12 +249,18 @@ async function expectBuiltScripts(outputPath: string): Promise<void> {
   expect(popupHtml).toContain('Open admin dashboard');
   expect(popupHtml).toContain('Transcript phrase groups');
   expect(popupHtml).toContain('Recent activity');
+  expect(popupHtml).not.toContain('Fast pre-scan');
+  expect(popupHtml).not.toContain('Teach YapSkippr');
+  expect(popupHtml).not.toContain('High-confidence segments');
+  expect(popupHtml).not.toContain('button below');
+  expect(popupHtml).not.toContain('Frame analysis');
 
   const chunkFiles = await readdir(join(process.cwd(), outputPath, 'chunks'));
   const popupChunk = chunkFiles.find((file) => file.startsWith('popup-') && file.endsWith('.js'));
   expect(popupChunk).toBeTruthy();
 
   const popupScript = await readFile(join(process.cwd(), outputPath, 'chunks', popupChunk ?? ''), 'utf8');
+  expect(Buffer.byteLength(popupScript, 'utf8')).toBeLessThan(100_000);
   expect(popupScript).toContain('permissions.request');
   expect(popupScript).toContain('Firefox permission removal failed');
   expect(popupScript).toContain('<all_urls>');
@@ -271,9 +284,12 @@ async function expectBuiltScripts(outputPath: string): Promise<void> {
   expect(popupScript).toContain('missed_context');
   expect(popupScript).toContain('yapskippr.transcriptPhraseGroups');
   expect(popupScript).toContain('yapskippr.autoSkipEnabled');
+  expect(popupScript).toContain('Open a YouTube video to use YapSkippr.');
+  expect(popupScript).toContain('Access was not granted. Visual checks remain off');
   expect(popupScript).toContain('Undo is available beside the YouTube player after every skip.');
   expect(popupScript).toContain('Feedback endpoint saved with origin access. Sharing follows the switch above.');
   expect(popupScript).toContain('Transcript phrase groups saved');
+  expect(popupScript).not.toContain('Frame capture unavailable; transcript scan continues.');
 }
 
 async function expectResponsivePopupStyles(outputPath: string): Promise<void> {
@@ -284,6 +300,9 @@ async function expectResponsivePopupStyles(outputPath: string): Promise<void> {
   const popupCss = await readFile(join(process.cwd(), outputPath, 'assets', popupStylesheet ?? ''), 'utf8');
   expect(popupCss).toMatch(/body\{[^}]*width:390px;min-width:0;max-width:390px;[^}]*overflow-x:hidden/);
   expect(popupCss).toMatch(/@media ?\((?:max-width:390px|width<=390px)\)\{body\{width:100%;max-width:100vw\}\}/);
-  expect(popupCss).toMatch(/@media ?\((?:max-width:360px|width<=360px)\)\{main\{padding:12px\}/);
+  expect(popupCss).toMatch(/@media ?\((?:max-width:360px|width<=360px)\)\{main\{padding:var\(--space-3\)\}/);
   expect(popupCss).toMatch(/\.permission-panel\{grid-template-columns:minmax\(0,1fr\)\}/);
+  expect(popupCss).not.toContain('radial-gradient');
+  expect(popupCss).not.toContain('linear-gradient');
+  expect(popupCss).not.toMatch(/@keyframes|animation:/);
 }

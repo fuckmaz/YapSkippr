@@ -14,9 +14,9 @@ export interface OccurrenceFeedbackAction {
 }
 
 export const OCCURRENCE_FEEDBACK_ACTIONS = [
-  { value: 'accurate', label: 'Good', title: 'Correct detection' },
-  { value: 'false_positive', label: 'Wrong', title: 'Wrong detection' },
-  { value: 'wrong_timing', label: 'Timing', title: 'Wrong timing' }
+  { value: 'accurate', label: 'Correct', title: 'Correct detection' },
+  { value: 'false_positive', label: 'Not an ad', title: 'Not an ad read' },
+  { value: 'wrong_timing', label: 'Wrong times', title: 'Wrong start or end time' }
 ] as const satisfies readonly OccurrenceFeedbackAction[];
 
 export interface OccurrenceFeedbackEvidenceSnapshot {

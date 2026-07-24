@@ -5,6 +5,7 @@ test('matches YouTube watch URLs', () => {
   expect(isYouTubeWatchUrl(new URL('https://m.youtube.com/watch?v=abc123'))).toBe(true);
   expect(isYouTubeWatchUrl(new URL('https://youtu.be/abc123'))).toBe(true);
   expect(isYouTubeWatchUrl(new URL('https://www.youtube.com/shorts/abc123'))).toBe(false);
+  expect(isYouTubeWatchUrl(new URL('https://www.youtube.com/feed/subscriptions'))).toBe(false);
 });
 
 test('extracts video IDs from supported YouTube URLs', () => {

@@ -29,6 +29,8 @@ export interface PopupCandidateView {
   id: string;
   summary: string;
   detail: string;
+  feedbackSummary: string;
+  feedbackReason: string;
   seekSeconds: number;
   endSeconds?: number;
   actionLabel: string;
@@ -56,11 +58,11 @@ export interface PopupEvidenceEventView {
 const phaseLabels: Record<ScanStatusPhase, string> = {
   idle: 'Idle',
   starting: 'Starting',
-  transcript: 'Transcript',
-  frames: 'Frames',
-  fusion: 'Fusion',
+  transcript: 'Captions',
+  frames: 'Visual checks',
+  fusion: 'Reviewing',
   done: 'Done',
-  permission: 'Permission',
+  permission: 'Access',
   stopped: 'Stopped',
   error: 'Error'
 };
@@ -75,16 +77,18 @@ export function createPopupScanStatusView(
   const stale = isScanStatusStale(status, now);
 
   return {
-    title: status.phase === 'idle' ? 'No active scan' : `${formatPlatform(status.platformId)} scan`,
+    title: status.phase === 'idle' ? 'No active video' : `${formatPlatform(status.platformId)} video`,
     phaseLabel: stale ? 'Stale' : phaseLabels[status.phase],
-    message: status.message,
+    message: formatStatusMessage(status),
     progressPercent,
     progressText: `${progressPercent}%`,
-    sampleCountText: formatCount(status.sampleCount, 'frame'),
-    candidateCountText: formatCount(status.candidateCount, 'candidate'),
+    sampleCountText: formatCount(status.sampleCount, 'visual check'),
+    candidateCountText: formatCount(status.candidateCount, 'possible ad read'),
     videoTimeText: formatVideoTime(status.videoCurrentTimeSeconds, status.videoDurationSeconds),
     modelText: formatModelText(status),
-    fastScanText: status.fastScanEnabled ? `Fast pre-scan on · ${status.fastScanIntervalSeconds}s interval` : 'Fast pre-scan off',
+    fastScanText: status.fastScanEnabled
+      ? `Visual checks · every ${status.fastScanIntervalSeconds}s`
+      : 'Standard visual checks · every 5s',
     evidenceItems: [
       { label: 'Transcript', value: String(status.evidenceCounts.transcript) },
       { label: 'Progress', value: String(status.evidenceCounts.progressBar) },
@@ -93,8 +97,10 @@ export function createPopupScanStatusView(
     ],
     candidates: status.candidates.map((candidate) => ({
       id: candidate.id,
-      summary: candidate.summary,
+      summary: formatCandidateSummary(candidate),
       detail: formatCandidateDetail(candidate),
+      feedbackSummary: candidate.summary,
+      feedbackReason: formatCandidateFeedbackReason(candidate),
       seekSeconds: candidate.startSeconds,
       ...(candidate.endSeconds === undefined ? {} : { endSeconds: candidate.endSeconds }),
       actionLabel: `Jump to ${formatTimestamp(candidate.startSeconds)}`
@@ -112,7 +118,7 @@ export function createPopupScanStatusView(
       kindLabel: formatEvidenceKind(evidence.kind),
       timeLabel: formatTimestamp(evidence.startSeconds),
       startSeconds: evidence.startSeconds,
-      confidenceText: `${Math.round(evidence.confidence * 100)}%`,
+      confidenceText: `Detector score: ${Math.round(evidence.confidence * 100)}%`,
       reason: evidence.reason,
       ...(evidence.detail ? { detail: evidence.detail } : {})
     })),
@@ -169,9 +175,52 @@ function formatModelMessageSuffix(message: string): string {
 function formatCandidateDetail(candidate: ScanStatusSnapshot['candidates'][number]): string {
   const sourceText = candidate.sources.join(' + ') || 'unknown source';
   if (candidate.modelConfidence !== undefined && candidate.heuristicConfidence !== undefined) {
+    return `Detector score: ${Math.round(candidate.modelConfidence * 100)}% model · ${Math.round(candidate.heuristicConfidence * 100)}% heuristic`;
+  }
+  return `Detector score: ${Math.round(candidate.confidence * 100)}% heuristic · ${sourceText}`;
+}
+
+function formatCandidateFeedbackReason(candidate: ScanStatusSnapshot['candidates'][number]): string {
+  const sourceText = candidate.sources.join(' + ') || 'unknown source';
+  if (candidate.modelConfidence !== undefined && candidate.heuristicConfidence !== undefined) {
     return `${Math.round(candidate.modelConfidence * 100)}% model · ${Math.round(candidate.heuristicConfidence * 100)}% heuristic · ${sourceText}`;
   }
   return `${Math.round(candidate.confidence * 100)}% confidence · ${sourceText}`;
+}
+
+function formatCandidateSummary(candidate: ScanStatusSnapshot['candidates'][number]): string {
+  const start = formatTimestamp(candidate.startSeconds);
+  const sourceText = candidate.sources.join(' + ') || 'detected signals';
+  if (candidate.endSeconds === undefined) return `From ${start} · ${sourceText}`;
+  return `${start}–${formatTimestamp(candidate.endSeconds)} · ${sourceText}`;
+}
+
+function formatStatusMessage(status: ScanStatusSnapshot): string {
+  if (status.phase === 'idle') return 'Open a YouTube video to start detecting ad reads.';
+  if (status.phase === 'starting') return 'Getting detection ready...';
+  if (status.phase === 'transcript') return 'Checking the video captions for ad reads...';
+  if (status.phase === 'frames') {
+    return status.sampleCount === 0
+      ? 'Checking the video for visual ad-read signs...'
+      : `Checking the video for visual ad-read signs · ${formatCount(status.sampleCount, 'check')} complete`;
+  }
+  if (status.phase === 'fusion') return 'Reviewing the strongest ad-read signs...';
+  if (status.phase === 'done') {
+    return status.candidateCount === 0
+      ? 'Finished checking. No ad reads found.'
+      : `Found ${formatCount(status.candidateCount, 'possible ad read')}.`;
+  }
+  if (status.phase === 'permission') return 'Visual checks need access. Use the access control above.';
+  return replaceTechnicalTerms(status.message);
+}
+
+function replaceTechnicalTerms(message: string): string {
+  return message
+    .replace(/recognition model/gi, 'detector')
+    .replace(/transcript cues?/gi, 'caption signals')
+    .replace(/frame analysis/gi, 'visual checks')
+    .replace(/frames? sampled/gi, 'visual checks completed')
+    .replace(/analyzing frames/gi, 'checking the video');
 }
 
 function formatTimestamp(seconds: number): string {

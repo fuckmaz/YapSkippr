@@ -56,6 +56,7 @@ import {
   type PopupEvidenceEventView
 } from '../../ui/popup-scan-status-view';
 import { createStableListRenderer } from '../../ui/stable-list-renderer';
+import { getYouTubeVideoIdFromUrl, isYouTubeWatchUrl } from '../../platform/youtube/youtube-url';
 
 const frameCaptureOrigins = ['<all_urls>'];
 const seekToMessageType = 'YAPSKIPPR_SEEK_TO';
@@ -65,6 +66,9 @@ const missedSegmentContextMessageType = 'YAPSKIPPR_GET_MISSED_SEGMENT_CONTEXT';
 const status = document.querySelector('#status');
 const basicModeToggle = document.querySelector<HTMLButtonElement>('#basic-mode-toggle');
 const detailedModeToggle = document.querySelector<HTMLButtonElement>('#detailed-mode-toggle');
+const basicView = document.querySelector<HTMLElement>('#basic-view');
+const permissionPanel = document.querySelector<HTMLElement>('#permission-panel');
+const permissionTitle = document.querySelector('#permission-title');
 const permissionStatus = document.querySelector('#permission-status');
 const grantAccessButton = document.querySelector<HTMLButtonElement>('#grant-access');
 const scanTitle = document.querySelector('#scan-title');
@@ -85,6 +89,7 @@ const fastScanToggle = document.querySelector<HTMLButtonElement>('#fast-scan-tog
 const fastScanStatus = document.querySelector('#fast-scan-status');
 const autoSkipToggle = document.querySelector<HTMLButtonElement>('#auto-skip-toggle');
 const autoSkipStatus = document.querySelector('#auto-skip-status');
+const candidateResults = document.querySelector<HTMLElement>('#candidate-results');
 const scanCandidates = document.querySelector<HTMLOListElement>('#scan-candidates');
 const candidateActionStatus = document.querySelector('#candidate-action-status');
 const missedSegmentToggle = document.querySelector<HTMLButtonElement>('#missed-segment-toggle');
@@ -94,6 +99,7 @@ const missedSegmentEnd = document.querySelector<HTMLInputElement>('#missed-segme
 const missedSegmentCancel = document.querySelector<HTMLButtonElement>('#missed-segment-cancel');
 const missedSegmentSubmit = document.querySelector<HTMLButtonElement>('#missed-segment-submit');
 const missedSegmentStatus = document.querySelector('#missed-segment-status');
+const activityPanel = document.querySelector<HTMLElement>('.activity-panel');
 const scanEvents = document.querySelector<HTMLOListElement>('#scan-events');
 const developerPanel = document.querySelector<HTMLElement>('#developer-panel');
 const detailVideoId = document.querySelector('#detail-video-id');
@@ -116,6 +122,7 @@ const saveTranscriptPhraseGroupsButton = document.querySelector<HTMLButtonElemen
 const resetTranscriptPhraseGroupsButton = document.querySelector<HTMLButtonElement>('#reset-transcript-phrase-groups');
 const transcriptPhraseStatus = document.querySelector('#transcript-phrase-status');
 const scanEvidenceEvents = document.querySelector<HTMLOListElement>('#scan-evidence-events');
+const signalDetailsPanel = document.querySelector<HTMLElement>('#signal-details-panel');
 const scanUpdated = document.querySelector('#scan-updated');
 const scanCandidateListRenderer = scanCandidates
   ? createStableListRenderer<PopupCandidateView, HTMLLIElement>({
@@ -124,6 +131,8 @@ const scanCandidateListRenderer = scanCandidates
         candidate.id,
         candidate.summary,
         candidate.detail,
+        candidate.feedbackSummary,
+        candidate.feedbackReason,
         candidate.seekSeconds,
         candidate.endSeconds ?? null,
         candidate.actionLabel
@@ -149,6 +158,7 @@ const scanEvidenceListRenderer = scanEvidenceEvents
   : null;
 let currentScanStatus: ScanStatusSnapshot = createIdleScanStatus();
 let ownedTabId: number | null = null;
+let activeWatchVideoId: string | null = null;
 let stopScanStatusSubscription: (() => void) | undefined;
 let autoSkipPreferenceGeneration = 0;
 let anonymousClientIdPromise: Promise<string | null> | null = null;
@@ -161,8 +171,6 @@ const fastScanCapability = createScanCapabilityController({
     if (view.message) setFastScanStatus(view.message);
   }
 });
-
-status?.replaceChildren(document.createTextNode('Detection status is mirrored here while a YouTube tab is scanning.'));
 
 grantAccessButton?.addEventListener('click', () => {
   void requestFrameCaptureAccess();
@@ -242,30 +250,46 @@ window.addEventListener('pagehide', () => {
   fastScanCapability.dispose();
 }, { once: true });
 
-void refreshFrameCaptureAccess();
 
 async function initializeScanStatus(): Promise<void> {
   try {
-    const tabId = await getActiveTabId();
+    const activeTab = await getActiveTab();
+    activeWatchVideoId = getYouTubeWatchVideoId(activeTab.url);
+    if (!activeWatchVideoId) {
+      ownedTabId = null;
+      permissionPanel?.setAttribute('hidden', 'true');
+      status?.replaceChildren(document.createTextNode('Open a YouTube video to use YapSkippr.'));
+      renderScanStatus(createIdleScanStatus());
+      fastScanToggle?.setAttribute('disabled', 'true');
+      return;
+    }
+
+    const tabId = activeTab.id;
     ownedTabId = tabId;
+    status?.replaceChildren(document.createTextNode('Watching this YouTube video for ad reads.'));
+    void refreshFrameCaptureAccess();
 
     let receivedSubscriptionUpdate = false;
     stopScanStatusSubscription = subscribeToStoredScanStatus(tabId, (statusSnapshot) => {
       receivedSubscriptionUpdate = true;
-      renderScanStatus(statusSnapshot);
-      refreshFastScanCapability(tabId, statusSnapshot);
+      const relevantStatus = getRelevantScanStatus(statusSnapshot);
+      renderScanStatus(relevantStatus);
+      refreshFastScanCapability(tabId, relevantStatus);
     });
 
-    const storedStatus = await readStoredScanStatus(tabId);
+    const storedStatus = getRelevantScanStatus(await readStoredScanStatus(tabId));
     if (!receivedSubscriptionUpdate) {
       renderScanStatus(storedStatus);
       refreshFastScanCapability(tabId, storedStatus);
     }
   } catch (error) {
     ownedTabId = null;
+    activeWatchVideoId = null;
     stopScanStatusSubscription?.();
     stopScanStatusSubscription = undefined;
     fastScanCapability.dispose();
+    permissionPanel?.setAttribute('hidden', 'true');
+    status?.replaceChildren(document.createTextNode('Open a YouTube video to use YapSkippr.'));
     const message = error instanceof Error ? error.message : String(error);
     renderScanStatus(createIdleScanStatus());
     fastScanToggle?.setAttribute('disabled', 'true');
@@ -292,7 +316,9 @@ function renderScanStatus(statusSnapshot = createIdleScanStatus()): void {
   evidenceQr?.replaceChildren(document.createTextNode(view.evidenceItems[2]?.value ?? '0'));
   evidenceLinks?.replaceChildren(document.createTextNode(view.evidenceItems[3]?.value ?? '0'));
   fastScanStatus?.replaceChildren(document.createTextNode(view.fastScanText));
-  fastScanToggle?.replaceChildren(document.createTextNode(statusSnapshot.fastScanEnabled ? 'Stop fast pre-scan' : 'Start fast pre-scan'));
+  fastScanToggle?.replaceChildren(document.createTextNode(
+    statusSnapshot.fastScanEnabled ? 'Use standard 5s interval' : 'Use selected interval'
+  ));
   if (fastScanToggle) fastScanToggle.dataset.enabled = String(statusSnapshot.fastScanEnabled);
   if (fastScanInterval && document.activeElement !== fastScanInterval) {
     fastScanInterval.value = String(statusSnapshot.fastScanIntervalSeconds);
@@ -300,6 +326,7 @@ function renderScanStatus(statusSnapshot = createIdleScanStatus()): void {
   scanUpdated?.replaceChildren(document.createTextNode(view.updatedText));
 
   scanCandidateListRenderer?.render(view.candidates);
+  if (candidateResults) candidateResults.hidden = view.candidates.length === 0;
 
   scanEvents?.replaceChildren(
     ...view.events.map((event) => {
@@ -321,6 +348,7 @@ function renderScanStatus(statusSnapshot = createIdleScanStatus()): void {
       return item;
     })
   );
+  if (activityPanel) activityPanel.hidden = view.events.length === 0;
 
   detailVideoId?.replaceChildren(document.createTextNode(statusSnapshot.videoId ?? '-'));
   detailPageUrl?.replaceChildren(document.createTextNode(statusSnapshot.pageUrl ?? '-'));
@@ -331,6 +359,7 @@ function renderScanStatus(statusSnapshot = createIdleScanStatus()): void {
   detailModelMessage?.replaceChildren(document.createTextNode(statusSnapshot.model.message));
   detailUpdated?.replaceChildren(document.createTextNode(view.updatedText));
   scanEvidenceListRenderer?.render(view.evidenceEvents);
+  if (signalDetailsPanel) signalDetailsPanel.hidden = view.evidenceEvents.length === 0;
 }
 
 function createCandidateListItem(candidate: PopupCandidateView): HTMLLIElement {
@@ -356,8 +385,8 @@ function createCandidateListItem(candidate: PopupCandidateView): HTMLLIElement {
     occurrenceType: 'candidate',
     startSeconds: candidate.seekSeconds,
     endSeconds: candidate.endSeconds,
-    summary: candidate.summary,
-    reason: candidate.detail
+    summary: candidate.feedbackSummary,
+    reason: candidate.feedbackReason
   }));
   item.append(copy, actions);
   return item;
@@ -390,47 +419,102 @@ function createEvidenceListItem(evidence: PopupEvidenceEventView): HTMLLIElement
 }
 
 async function refreshFrameCaptureAccess(): Promise<void> {
-  setPermissionStatus('Checking frame capture access...');
+  renderPermissionState({
+    hidden: false,
+    title: 'Enable visual checks',
+    status: 'Checking access...',
+    buttonHidden: false,
+    buttonDisabled: true
+  });
 
   try {
     const granted = await containsFrameCaptureAccess();
-    updateAccessState(granted);
+    if (granted) {
+      renderPermissionState({
+        hidden: true,
+        title: 'Visual checks enabled',
+        status: 'Visual checks are enabled.',
+        buttonHidden: true,
+        buttonDisabled: true
+      });
+      return;
+    }
+    renderPermissionNeedsAccess();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    setPermissionStatus(`Could not check access: ${message}`);
+    renderPermissionState({
+      hidden: false,
+      title: 'Enable visual checks',
+      status: `Could not check access: ${message}`,
+      buttonHidden: false,
+      buttonDisabled: false
+    });
   }
 }
 
 async function requestFrameCaptureAccess(): Promise<void> {
-  grantAccessButton?.setAttribute('disabled', 'true');
-  setPermissionStatus('Requesting frame capture access...');
+  renderPermissionState({
+    hidden: false,
+    title: 'Enable visual checks',
+    status: 'Requesting access for all websites...',
+    buttonHidden: false,
+    buttonDisabled: true
+  });
 
   try {
     const granted = await requestPermissions({ origins: frameCaptureOrigins });
-    updateAccessState(granted);
     if (granted) {
-      setPermissionStatus('Frame capture access granted. Reload the YouTube tab to restart analysis.');
+      renderPermissionState({
+        hidden: false,
+        title: 'Visual checks enabled',
+        status: 'Access granted. Reload the YouTube tab to start visual checks.',
+        buttonHidden: true,
+        buttonDisabled: true
+      });
+      if (permissionStatus instanceof HTMLElement) permissionStatus.focus();
+      return;
     }
+    renderPermissionNeedsAccess('Access was not granted. Visual checks remain off; you can continue without them.');
+    grantAccessButton?.focus();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    setPermissionStatus(`Access request failed: ${message}`);
-    grantAccessButton?.removeAttribute('disabled');
+    renderPermissionState({
+      hidden: false,
+      title: 'Enable visual checks',
+      status: `Access request failed: ${message}`,
+      buttonHidden: false,
+      buttonDisabled: false
+    });
+    grantAccessButton?.focus();
   }
 }
 
-function updateAccessState(granted: boolean): void {
-  if (granted) {
-    grantAccessButton?.setAttribute('disabled', 'true');
-    setPermissionStatus('Frame capture access is enabled.');
-    return;
-  }
-
-  grantAccessButton?.removeAttribute('disabled');
-  setPermissionStatus('Frame capture access is required for visual ad-read detection.');
+function renderPermissionNeedsAccess(
+  message = 'Visual checks are off until access is allowed.'
+): void {
+  renderPermissionState({
+    hidden: false,
+    title: 'Enable visual checks',
+    status: message,
+    buttonHidden: false,
+    buttonDisabled: false
+  });
 }
 
-function setPermissionStatus(message: string): void {
-  permissionStatus?.replaceChildren(document.createTextNode(message));
+function renderPermissionState(view: {
+  hidden: boolean;
+  title: string;
+  status: string;
+  buttonHidden: boolean;
+  buttonDisabled: boolean;
+}): void {
+  if (permissionPanel) permissionPanel.hidden = view.hidden;
+  permissionTitle?.replaceChildren(document.createTextNode(view.title));
+  permissionStatus?.replaceChildren(document.createTextNode(view.status));
+  if (grantAccessButton) {
+    grantAccessButton.hidden = view.buttonHidden;
+    grantAccessButton.disabled = view.buttonDisabled;
+  }
 }
 
 function containsFrameCaptureAccess(): Promise<boolean> {
@@ -481,18 +565,18 @@ async function seekActiveTabTo(seconds: number, label: string): Promise<void> {
 
 async function setFastScan(enabled: boolean, intervalSeconds: number): Promise<void> {
   const safeIntervalSeconds = clampIntervalSeconds(intervalSeconds);
-  setFastScanStatus(`${enabled ? 'Starting' : 'Stopping'} fast pre-scan...`);
+  setFastScanStatus(enabled ? 'Applying the selected visual-check interval...' : 'Restoring the standard 5s interval...');
 
   try {
     const tabId = getOwnedTabId();
     const response = await sendFastScanMessage(tabId, enabled, safeIntervalSeconds);
     if (!response.ok) {
-      throw new Error(response.error ?? 'YouTube tab did not accept fast pre-scan settings.');
+      throw new Error(response.error ?? 'YouTube tab did not accept the visual-check interval.');
     }
-    setFastScanStatus(enabled ? `Fast pre-scan on · ${safeIntervalSeconds}s interval` : 'Fast pre-scan off');
+    setFastScanStatus(enabled ? `Visual checks · every ${safeIntervalSeconds}s` : 'Standard visual checks · every 5s');
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    setFastScanStatus(`Fast pre-scan failed: ${message}`);
+    setFastScanStatus(`Could not change the visual-check interval: ${message}`);
   }
 }
 
@@ -589,7 +673,7 @@ async function loadAutoSkipPreference(): Promise<void> {
 async function saveAutoSkipPreference(enabled: boolean): Promise<void> {
   autoSkipToggle?.setAttribute('disabled', 'true');
   const generation = ++autoSkipPreferenceGeneration;
-  setAutoSkipStatus(enabled ? 'Turning on safe auto-skip...' : 'Turning auto-skip off...');
+  setAutoSkipStatus(enabled ? 'Turning auto-skip on...' : 'Turning auto-skip off...');
 
   try {
     await setLocalStorageValue(AUTO_SKIP_ENABLED_STORAGE_KEY, enabled);
@@ -648,6 +732,7 @@ function setTranscriptPhraseStatus(message: string): void {
 }
 
 function setDetailedMode(enabled: boolean): void {
+  if (basicView) basicView.hidden = enabled;
   if (developerPanel) developerPanel.hidden = !enabled;
   if (basicModeToggle) {
     basicModeToggle.dataset.active = String(!enabled);
@@ -657,6 +742,7 @@ function setDetailedMode(enabled: boolean): void {
     detailedModeToggle.dataset.active = String(enabled);
     detailedModeToggle.setAttribute('aria-pressed', String(enabled));
   }
+  window.scrollTo(0, 0);
 }
 
 async function loadFeedbackEndpoint(): Promise<void> {
@@ -992,8 +1078,8 @@ async function sendFeedbackPayload(
     return null;
   }
   if (!feedbackSendControl.getEndpoint()) {
-    setStatus('Set and save a feedback API endpoint in Detailed mode first.');
-    setFeedbackStatus('Set and save a feedback API endpoint in Detailed mode first.');
+    setStatus('Set and save a feedback API endpoint in Advanced first.');
+    setFeedbackStatus('Set and save a feedback API endpoint in Advanced first.');
     setDetailedMode(true);
     feedbackEndpointInput?.focus();
     return null;
@@ -1078,7 +1164,7 @@ function presentFeedbackConsentRequired(message: string): void {
     feedbackConsentPanel.scrollIntoView({ block: 'nearest' });
   }
   setFeedbackConsentStatus(message);
-  setFeedbackStatus('Feedback was not sent. Turn on Share feedback in Detailed mode first.');
+  setFeedbackStatus('Feedback was not sent. Turn on Share feedback in Advanced first.');
   feedbackConsentInput?.focus({ preventScroll: true });
 }
 
@@ -1344,7 +1430,7 @@ function createFeedbackButton(
   return button;
 }
 
-function getActiveTabId(): Promise<number> {
+function getActiveTab(): Promise<{ id: number; url: string | null }> {
   return new Promise((resolve, reject) => {
     chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
       const error = chrome.runtime.lastError;
@@ -1356,9 +1442,35 @@ function getActiveTabId(): Promise<number> {
         reject(new Error('No active browser tab found.'));
         return;
       }
-      resolve(tab.id);
+      resolve({
+        id: tab.id,
+        url: typeof tab.url === 'string' ? tab.url : null
+      });
     });
   });
+}
+
+function getYouTubeWatchVideoId(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (!isYouTubeWatchUrl(url)) return null;
+    return getYouTubeVideoIdFromUrl(url);
+  } catch {
+    return null;
+  }
+}
+
+function getRelevantScanStatus(statusSnapshot: ScanStatusSnapshot): ScanStatusSnapshot {
+  if (
+    statusSnapshot.phase === 'idle'
+    || (activeWatchVideoId
+      && statusSnapshot.platformId === 'youtube'
+      && statusSnapshot.videoId === activeWatchVideoId)
+  ) {
+    return statusSnapshot;
+  }
+  return createIdleScanStatus();
 }
 
 function getOwnedTabId(): number {
