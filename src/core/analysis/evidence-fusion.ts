@@ -50,16 +50,20 @@ function buildPresenceOnlyCandidates(presenceEvidence: TimedEvidence[]): Segment
  * playback control, audio meter, or generic QR URL must not create a skip on
  * its own. Sponsor-semantic QR payloads may surface directly; generic QR
  * payloads need persistence (three independently sampled observations) or a
- * different evidence source.
+ * different evidence source. Generic transcript calls to action also require
+ * another evidence source; phrases such as "visit" and "check out" are too
+ * common in ordinary content to form a segment by repetition alone.
  */
 function isEligiblePresenceOnlyGroup(group: readonly TimedEvidence[]): boolean {
-  const nonProgress = group.filter((item) => item.source !== 'frame-progress-bar');
-  if (nonProgress.length === 0) return false;
+  const sources = new Set(group.map((item) => item.source));
+  if (sources.size > 1) return true;
 
-  const nonGenericQr = nonProgress.filter((item) => !isGenericQrEvidence(item));
-  if (nonGenericQr.length > 0) return true;
-
-  return nonProgress.length >= 3;
+  const source = group[0]?.source;
+  if (source === 'frame-visible-link') return true;
+  if (source === 'frame-qr-code') {
+    return group.some((item) => !isGenericQrEvidence(item)) || group.length >= 3;
+  }
+  return false;
 }
 
 function isGenericQrEvidence(evidence: TimedEvidence): boolean {

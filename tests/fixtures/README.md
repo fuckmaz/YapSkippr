@@ -75,3 +75,23 @@ npm test -- tests/unit/png-fixture-loader.test.ts tests/unit/detector-benchmark.
 Add representative cases to `tests/unit/detector-benchmark.test.ts` and keep their expected-source labels explicit. The benchmark reports expected detections, detections, misses, false positives, recall, and precision per detector source.
 
 The benchmark uses minimum recall and precision gates, currently 0.90 recall and 0.95 precision for each detector source. Metrics are calculated from user-visible candidate evidence, so a raw generic QR decode or raw moving-meter progress observation is a successful low-level detection but a required candidate-level negative. Raw detection expectations remain explicit for critical coverage and false-positive fixtures. Raise gates when an improvement is proven across both positive and negative cases. Never lower a gate to accommodate a regression without documenting the failing fixture, the product tradeoff, and a follow-up issue or test that will restore the target.
+
+## End-to-end segment corpus
+
+`segment-detection-corpus.ts` exercises the production transcript analyzer and evidence-fusion path rather than a test-only approximation. Every case records a stable ID, video duration, expected segment boundaries, tags, and provenance. It includes:
+
+- explicit and split-caption sponsor disclosures;
+- transcript plus progress-bar corroboration;
+- multiple ad reads in one video;
+- QR-only open detections that remain review-only;
+- negated sponsor language, ordinary call-to-action wording, end-cue-only transitions, and uncorroborated progress geometry as hard negatives.
+
+Run both visual and segment quality gates with:
+
+```sh
+npm run test:benchmark
+```
+
+The segment gate requires at least 0.95 precision, 0.90 recall, 0.95 negative-case accuracy, 0.80 closed-boundary coverage, zero false positives per corpus hour, and at most five seconds of boundary mean absolute error. Its one-to-one temporal matching prevents duplicate predictions from inflating recall. Open detections can match by start-time tolerance, but never contribute a closed boundary.
+
+The committed segment cases are deterministic and self-authored; they are a regression floor, not evidence of broad real-world accuracy. Add reviewed real-world-derived cases only when the transcript/evidence can be redistributed or safely paraphrased, the expected boundaries were independently checked, and the provenance is documented. Keep a separate, distinct-video holdout for model promotion so tuning cases cannot leak into reported validation quality.

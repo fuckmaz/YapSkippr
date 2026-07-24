@@ -61,6 +61,45 @@ test('filters isolated frame-only progress evidence below display threshold', ()
   expect(candidates).toEqual([]);
 });
 
+test('does not fuse repeated generic transcript calls to action without corroboration', () => {
+  const candidates = buildSegmentCandidates([
+    evidence({
+      kind: 'ad-read-presence',
+      startSeconds: 40,
+      confidence: 0.5,
+      reason: 'visit'
+    }),
+    evidence({
+      kind: 'ad-read-presence',
+      startSeconds: 52,
+      confidence: 0.5,
+      reason: 'check out'
+    })
+  ]);
+
+  expect(candidates).toEqual([]);
+});
+
+test('allows transcript call-to-action evidence when a different detector corroborates it', () => {
+  const candidates = buildSegmentCandidates([
+    evidence({
+      kind: 'ad-read-presence',
+      startSeconds: 40,
+      confidence: 0.5,
+      reason: 'use code'
+    }),
+    evidence({
+      source: 'frame-progress-bar',
+      kind: 'ad-read-presence',
+      startSeconds: 44,
+      confidence: 0.78,
+      reason: 'confirmed progress'
+    })
+  ]);
+
+  expect(candidates).toHaveLength(1);
+});
+
 test('surfaces isolated sponsor-semantic QR evidence above the display threshold', () => {
   const candidates = buildSegmentCandidates([
     evidence({

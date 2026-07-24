@@ -138,3 +138,21 @@ test('matches phrases case-insensitively', () => {
 
   expect(evidence[0]?.kind).toBe('ad-read-start');
 });
+
+test('does not treat explicitly negated sponsor language as an ad-read start', () => {
+  expect(analyzeTranscriptCues([
+    cue(44, 'This video is not sponsored by Acme; it is an independent comparison.'),
+    cue(48, "The follow-up isn't sponsored by anyone either.")
+  ])).toEqual([]);
+});
+
+test('keeps affirmative not-only sponsor disclosures', () => {
+  const evidence = analyzeTranscriptCues([
+    cue(44, 'This project is not only sponsored by Acme, but also built with its public API.')
+  ]);
+
+  expect(evidence[0]).toMatchObject({
+    kind: 'ad-read-start',
+    startSeconds: 44
+  });
+});

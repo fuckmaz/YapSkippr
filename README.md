@@ -132,6 +132,7 @@ Run checks:
 
 ```bash
 npm test
+npm run test:benchmark
 npm run typecheck
 npm run test:e2e
 npm run test:server
@@ -141,6 +142,8 @@ npm run typecheck:server
 ```
 
 `npm run test:e2e` rebuilds the installable Chrome and Firefox artifacts before checking generated manifests, bundled entrypoints, packaged zip/xpi contents, and the Chrome MV3 content script in a deterministic YouTube-style playback fixture. The runtime test covers opt-in behavior, pause safety, automatic seeking, Undo replay suppression, and video-element replacement.
+
+`npm run test:benchmark` runs both detector quality gates. The committed PNG corpus measures progress-bar and QR candidate precision/recall, while the segment corpus runs the real transcript analyzer and evidence-fusion path. The segment gate tracks precision, recall, negative-case accuracy, false positives per hour, closed-boundary rate, and boundary mean absolute error. Open QR-only detections may count toward recall, but they lower closed-boundary coverage because they are reviewable rather than safe to auto-skip.
 
 ### Transcript Phrase Tuning
 
@@ -214,13 +217,15 @@ Rate-limited responses return HTTP `429` with `Retry-After`, `X-RateLimit-Limit`
 ```text
 src/
   core/analysis/        Detector logic for frames, QR codes, links, transcripts, and fusion.
+  core/evaluation/      Reusable segment-corpus matching, metrics, reports, and quality gates.
   core/model/           Candidate feature extraction and JSON logistic model scoring.
   core/scan-status.ts   Shared scan status model used by the page UI and popup.
   entrypoints/          WXT extension entrypoints for background, popup, and YouTube content script.
   platform/youtube/     YouTube-specific routing, metadata, and transcript integration.
   ui/                   Popup, page status, badge, logging, and candidate presentation helpers.
 tests/
-  unit/                 Detector, parser, status, and UI-model coverage.
+  fixtures/             Audited PNG and end-to-end segment detection corpora.
+  unit/                 Detector, benchmark, parser, status, and UI-model coverage.
   e2e/                  Build-output plus packaged Chrome MV3 playback/model-threshold coverage.
 scripts/
   build-installable.mjs Local packaging helper for Chrome and Firefox artifacts.
@@ -247,8 +252,8 @@ If Chrome reports `Either the '<all_urls>' or 'activeTab' permission is required
 
 ## Roadmap
 
-- Improve candidate scoring with reviewed feedback from more real-world sample videos.
-- Calibrate skip confidence and boundary quality against a reviewed real-world holdout corpus.
+- Expand the deterministic segment corpus with reviewed, redistributable real-world-derived cases across creator styles, accents, caption quality, and ad-read formats.
+- Calibrate skip confidence and boundary quality against a distinct-video, leakage-safe real-world holdout corpus.
 - Add richer but still minimal on-player visualization for candidate windows and skip history.
 - Add per-channel skip preferences after enough reviewed feedback exists to support them safely.
 - Introduce more platform adapters for additional streaming services.

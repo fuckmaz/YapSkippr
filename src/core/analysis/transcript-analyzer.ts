@@ -229,17 +229,40 @@ function findPhraseGroupMatch(
 }
 
 function findPattern(normalizedText: string, patterns: readonly string[], currentCueLength: number): string | null {
-  return patterns.find((pattern) => {
-    const startIndex = findPatternStartIndex(normalizedText, pattern);
-    return startIndex >= 0 && startIndex < currentCueLength;
-  }) ?? null;
+  for (const pattern of patterns) {
+    const startIndexes = findPatternStartIndexes(normalizedText, pattern);
+    const validMatch = startIndexes.find((startIndex) => {
+      return startIndex < currentCueLength && !isNegatedMatch(normalizedText, startIndex);
+    });
+    if (validMatch !== undefined) return pattern;
+  }
+
+  return null;
 }
 
-function findPatternStartIndex(normalizedText: string, pattern: string): number {
+function findPatternStartIndexes(normalizedText: string, pattern: string): number[] {
   const normalizedPattern = normalizeText(pattern);
-  if (!normalizedPattern) return -1;
-  if (normalizedPattern.includes(' ')) return normalizedText.indexOf(normalizedPattern);
-  return new RegExp(`\\b${escapeRegExp(normalizedPattern)}\\b`).exec(normalizedText)?.index ?? -1;
+  if (!normalizedPattern) return [];
+  if (!normalizedPattern.includes(' ')) {
+    return [...normalizedText.matchAll(new RegExp(`\\b${escapeRegExp(normalizedPattern)}\\b`, 'g'))]
+      .map((match) => match.index);
+  }
+
+  const indexes: number[] = [];
+  let searchFrom = 0;
+  while (searchFrom < normalizedText.length) {
+    const index = normalizedText.indexOf(normalizedPattern, searchFrom);
+    if (index === -1) break;
+    indexes.push(index);
+    searchFrom = index + Math.max(1, normalizedPattern.length);
+  }
+  return indexes;
+}
+
+function isNegatedMatch(normalizedText: string, startIndex: number): boolean {
+  const prefix = normalizedText.slice(Math.max(0, startIndex - 64), startIndex);
+  if (/\bnot\s+only\s*$/.test(prefix)) return false;
+  return /\b(?:not|never|without|isnt|wasnt|werent|arent|wont|didnt|doesnt|dont|no)\b(?:\s+\w+){0,3}\s*$/.test(prefix);
 }
 
 function escapeRegExp(value: string): string {
