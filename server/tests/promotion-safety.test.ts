@@ -49,6 +49,24 @@ test('blocks quality regressions against the currently promoted model', () => {
   ]));
 });
 
+test('blocks removal or regression of promoted boundary calibration', () => {
+  const promoted = {
+    ...model(),
+    boundaryCalibration: boundaryCalibration(0.4)
+  };
+  const removed = evaluateModelPromotionSafety(model(), promoted);
+  expect(removed.blockers).toContain('Candidate removes the promoted model boundary calibration.');
+
+  const regressed = evaluateModelPromotionSafety({
+    ...model(),
+    boundaryCalibration: boundaryCalibration(1.2)
+  }, promoted);
+  expect(regressed.blockers).toEqual(expect.arrayContaining([
+    expect.stringContaining('Global boundary MAE regresses'),
+    expect.stringContaining('transcript boundary MAE regresses')
+  ]));
+});
+
 function model(metricOverrides: Record<string, number> = {}): CandidateModelArtifact {
   return {
     modelId: 'model-safe',
@@ -77,5 +95,22 @@ function model(metricOverrides: Record<string, number> = {}): CandidateModelArti
       positives: 100,
       negatives: 100
     }
+  };
+}
+
+function boundaryCalibration(calibratedMaeSeconds: number) {
+  const profile = {
+    startOffsetSeconds: 5,
+    endOffsetSeconds: 6,
+    trainingExamples: 30,
+    validationExamples: 8,
+    videoGroups: 15,
+    baselineMaeSeconds: 5.5,
+    calibratedMaeSeconds
+  };
+  return {
+    version: 1 as const,
+    global: profile,
+    bySource: { transcript: profile }
   };
 }

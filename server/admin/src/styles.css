@@ -753,6 +753,7 @@ nav em {
 .evidence-box,
 .transcript-box,
 .feedback-box,
+.boundary-correction,
 .review-notes {
   display: grid;
   gap: 9px;
@@ -793,11 +794,43 @@ nav em {
 
 .transcript-box,
 .feedback-box,
+.boundary-correction,
 .review-notes {
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--surface-2);
+}
+
+.boundary-correction {
+  grid-template-columns: minmax(180px, 1fr) repeat(2, minmax(120px, 180px));
+  align-items: end;
+}
+
+.boundary-correction h3,
+.boundary-correction p {
+  margin: 0;
+}
+
+.boundary-correction p,
+.boundary-correction label span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.boundary-correction label {
+  display: grid;
+  gap: 6px;
+}
+
+.boundary-correction input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 9px 10px;
+  font: inherit;
 }
 
 .feedback-grid {
@@ -1374,6 +1407,7 @@ tr:last-child td {
   .evidence-row,
   .detail-evidence-row,
   .feedback-grid,
+  .boundary-correction,
   .bar-row {
     grid-template-columns: 1fr;
   }

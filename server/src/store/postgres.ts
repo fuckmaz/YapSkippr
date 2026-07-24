@@ -37,7 +37,7 @@ export function createPostgresRepository(databaseUrl: string): YapSkipprReposito
       return result.rows.map(feedbackFromRow);
     },
 
-    async reviewFeedback(id, label, notes) {
+    async reviewFeedback(id, label, notes, boundaryCorrection) {
       const client = await pool.connect();
       try {
         await client.query('begin');
@@ -52,6 +52,7 @@ export function createPostgresRepository(databaseUrl: string): YapSkipprReposito
           feedbackId: id,
           label,
           ...(notes ? { notes } : {}),
+          ...(boundaryCorrection ? { boundaryCorrection } : {}),
           reviewedAt: new Date().toISOString()
         };
         await client.query('update feedback_events set review = $2 where id = $1', [id, review]);

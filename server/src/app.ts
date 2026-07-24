@@ -7,13 +7,14 @@ import path from 'node:path';
 import { z } from 'zod';
 import { feedbackPayloadV2Schema } from './feedback/schema.js';
 import { buildTrainingDatasetRows } from './model/training-dataset.js';
+import { buildBoundaryTrainingExamples, calibrateBoundaryCorrections } from './model/boundary-calibration.js';
 import { trainLogisticModel } from './model/trainer.js';
 import { evaluateModelPromotionSafety } from './model/promotion-safety.js';
 import { getCompatibleTrainingExamples, summarizeTrainingReadiness } from './model/training-readiness.js';
 import type { CandidateModelArtifact } from './model/types.js';
 import { createMemoryRepository } from './store/memory.js';
 import { createPostgresRepository } from './store/postgres.js';
-import type { ReviewLabel, YapSkipprRepository } from './store/types.js';
+import type { BoundaryCorrection, ReviewLabel, YapSkipprRepository } from './store/types.js';
 
 export interface BuildServerOptions {
   adminToken?: string;
@@ -34,9 +35,38 @@ interface RateLimitBucket {
   resetAt: number;
 }
 
+const boundaryCorrectionSchema = z.object({
+  startSeconds: z.number().finite().nonnegative(),
+  endSeconds: z.number().finite().nonnegative().optional()
+}).superRefine((value, context) => {
+  if (value.endSeconds !== undefined && value.endSeconds <= value.startSeconds) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['endSeconds'],
+      message: 'Corrected end time must be after the corrected start time.'
+    });
+  }
+});
+
 const reviewSchema = z.object({
   label: z.enum(['positive', 'false_positive', 'wrong_timing', 'duplicate', 'ignored', 'needs_more_data']),
-  notes: z.string().optional()
+  notes: z.string().optional(),
+  boundaryCorrection: boundaryCorrectionSchema.optional()
+}).superRefine((value, context) => {
+  if (value.label === 'wrong_timing' && !value.boundaryCorrection) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['boundaryCorrection'],
+      message: 'Wrong-timing reviews require corrected boundaries.'
+    });
+  }
+  if (value.label !== 'wrong_timing' && value.boundaryCorrection) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['boundaryCorrection'],
+      message: 'Boundary corrections are only valid for wrong-timing reviews.'
+    });
+  }
 });
 
 const defaultBodyLimitBytes = 256 * 1024;
@@ -134,17 +164,26 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Fas
     const parsed = reviewSchema.safeParse(request.body);
     if (!parsed.success) return reply.status(400).send({ ok: false, error: 'Invalid review payload.' });
     const { id } = request.params as { id: string };
-    const record = await repository.reviewFeedback(id, parsed.data.label as ReviewLabel, parsed.data.notes);
+    const record = await repository.reviewFeedback(
+      id,
+      parsed.data.label as ReviewLabel,
+      parsed.data.notes,
+      parsed.data.boundaryCorrection as BoundaryCorrection | undefined
+    );
     if (!record) return reply.status(404).send({ ok: false, error: 'Feedback item not found.' });
     return { ok: true, item: record };
   });
 
   app.post('/admin/models/train', { preHandler: requireAdmin(adminToken) }, async (_request, reply) => {
-    const examples = await repository.listTrainingExamples();
+    const [examples, feedback] = await Promise.all([
+      repository.listTrainingExamples(),
+      repository.listFeedback()
+    ]);
     const readiness = summarizeTrainingReadiness(examples);
     if (!readiness.ready) return reply.status(400).send({ ok: false, error: readiness.blocker });
     const compatibleExamples = getCompatibleTrainingExamples(examples, readiness.featureSchemaVersion);
-    const model = trainLogisticModel(compatibleExamples);
+    const boundaryCalibration = calibrateBoundaryCorrections(buildBoundaryTrainingExamples(feedback));
+    const model = trainLogisticModel(compatibleExamples, { boundaryCalibration });
     await repository.saveModel(model);
     const run = await repository.createTrainingRun(model);
     return reply.status(201).send({ ok: true, model, run });
@@ -358,6 +397,7 @@ function buildModelEvaluationReport(modelId: string, model: CandidateModelArtifa
         f1: model.metrics.reviewF1 ?? null
       }
     },
+    boundaryCalibration: model.boundaryCalibration ?? null,
     trainingSetSummary: model.trainingSetSummary,
     promotedComparison: promoted
       ? {

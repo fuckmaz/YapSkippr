@@ -217,6 +217,105 @@ describe('YapSkippr server API', () => {
     await app.close();
   });
 
+  test('requires valid structured boundaries for wrong-timing reviews', async () => {
+    const app = await buildServer({ adminToken: 'secret' });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/v1/feedback',
+      payload: feedbackFixture({ startSeconds: 42, endSeconds: 90, feedback: 'wrong_timing' })
+    });
+    const feedbackId = created.json().feedbackId;
+
+    const missing = await app.inject({
+      method: 'POST',
+      url: `/admin/feedback/${feedbackId}/review`,
+      headers: { 'x-admin-token': 'secret' },
+      payload: { label: 'wrong_timing' }
+    });
+    expect(missing.statusCode).toBe(400);
+
+    const inverted = await app.inject({
+      method: 'POST',
+      url: `/admin/feedback/${feedbackId}/review`,
+      headers: { 'x-admin-token': 'secret' },
+      payload: {
+        label: 'wrong_timing',
+        boundaryCorrection: { startSeconds: 50, endSeconds: 49 }
+      }
+    });
+    expect(inverted.statusCode).toBe(400);
+
+    const accepted = await app.inject({
+      method: 'POST',
+      url: `/admin/feedback/${feedbackId}/review`,
+      headers: { 'x-admin-token': 'secret' },
+      payload: {
+        label: 'wrong_timing',
+        boundaryCorrection: { startSeconds: 47, endSeconds: 96 }
+      }
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json().item.review.boundaryCorrection).toEqual({
+      startSeconds: 47,
+      endSeconds: 96
+    });
+
+    await app.close();
+  });
+
+  test('embeds holdout-proven boundary corrections in trained model artifacts', async () => {
+    const repository = createMemoryRepository(() => '2026-07-24T10:00:00.000Z');
+    for (const [index, label] of ['positive', 'false_positive'].entries()) {
+      const record = await repository.createFeedback(feedbackFixture({
+        occurrenceId: `confidence-${index}`,
+        videoId: `confidence-video-${index}`,
+        feedback: label === 'positive' ? 'accurate' : 'false_positive'
+      }));
+      await repository.reviewFeedback(record.id, label as 'positive' | 'false_positive');
+    }
+    for (let index = 0; index < 30; index += 1) {
+      const startSeconds = 100 + index;
+      const endSeconds = 160 + index;
+      const record = await repository.createFeedback(feedbackFixture({
+        occurrenceId: `timing-${index}`,
+        videoId: `timing-video-${index}`,
+        source: 'transcript',
+        startSeconds,
+        endSeconds,
+        feedback: 'wrong_timing'
+      }));
+      await repository.reviewFeedback(record.id, 'wrong_timing', undefined, {
+        startSeconds: startSeconds + 5,
+        endSeconds: endSeconds + 6
+      });
+    }
+    const app = await buildServer({ adminToken: 'secret', repository });
+
+    const trained = await app.inject({
+      method: 'POST',
+      url: '/admin/models/train',
+      headers: { 'x-admin-token': 'secret' }
+    });
+
+    expect(trained.statusCode).toBe(201);
+    expect(trained.json().model.boundaryCalibration).toMatchObject({
+      version: 1,
+      global: {
+        startOffsetSeconds: 5,
+        endOffsetSeconds: 6,
+        calibratedMaeSeconds: 0
+      },
+      bySource: {
+        transcript: {
+          startOffsetSeconds: 5,
+          endOffsetSeconds: 6
+        }
+      }
+    });
+
+    await app.close();
+  });
+
   test('protects the admin dashboard with an admin session cookie', async () => {
     const app = await buildServer({ adminToken: 'secret' });
 
@@ -848,7 +947,12 @@ describe('YapSkippr server API', () => {
         method: 'POST',
         url: `/admin/feedback/${response.json().feedbackId}/review`,
         headers: { 'x-admin-token': 'secret' },
-        payload: { label }
+        payload: {
+          label,
+          ...(label === 'wrong_timing' ? {
+            boundaryCorrection: { startSeconds: 47, endSeconds: 96 }
+          } : {})
+        }
       });
       expect(review.statusCode).toBe(200);
     }
@@ -872,7 +976,11 @@ describe('YapSkippr server API', () => {
         featureCount: Object.keys(feedbackFixture().candidateFeatures ?? {}).length,
         compatible: true,
         trainable: false,
-        exclusionReason: 'wrong_timing is stored for boundary analysis, not confidence training.'
+        exclusionReason: 'wrong_timing is stored for boundary analysis, not confidence training.',
+        boundaryTrainable: true,
+        boundaryCorrection: { startSeconds: 47, endSeconds: 96 },
+        startOffsetSeconds: 5,
+        endOffsetSeconds: null
       }),
       expect.objectContaining({
         occurrenceId: 'dataset-incompatible',

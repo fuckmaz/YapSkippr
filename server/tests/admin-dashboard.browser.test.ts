@@ -129,6 +129,9 @@ describe('YapSkippr admin dashboard browser workflow', () => {
     expect(await reviewTimecodeLink.getAttribute('href')).toContain('t=42s');
     expect(await page.getByRole('button', { name: 'Positive', exact: true }).getAttribute('aria-keyshortcuts')).toBe('1');
     expect(await page.getByRole('button', { name: 'False positive', exact: true }).getAttribute('aria-keyshortcuts')).toBe('2');
+    await expectVisible(page, page.getByRole('heading', { name: 'Boundary correction' }));
+    expect(await page.getByLabel('Corrected start seconds').inputValue()).toBe('42');
+    expect(await page.getByLabel('Corrected end seconds').inputValue()).toBe('');
     await page.getByLabel('Admin review notes').click();
     await page.keyboard.type('Needs 1 more pass');
     await page.waitForTimeout(250);

@@ -23,7 +23,7 @@ YapSkippr analyzes the YouTube video you are currently watching and surfaces can
 
 The extension combines frame analysis and transcript signals so future versions can evolve toward more accurate, service-aware ad-read detection without tying the core logic to YouTube forever.
 
-YapSkippr now also includes a self-improving, non-LLM recognition loop. The extension still generates evidence with deterministic detectors, then optionally applies a promoted JSON logistic model fetched from your own server. Admin-reviewed feedback produces training examples; validation data calibrates precision-first display and recall-first review thresholds, and promotion safety gates run before browser clients can use a model.
+YapSkippr now also includes a self-improving, non-LLM recognition loop. The extension still generates evidence with deterministic detectors, then optionally applies a promoted JSON logistic model fetched from your own server. Admin-reviewed feedback produces training examples; validation data calibrates precision-first display and recall-first review thresholds, structured timing corrections learn holdout-proven segment offsets, and promotion safety gates run before browser clients can use a model.
 
 ## What It Detects
 
@@ -47,6 +47,7 @@ When evidence is found, YapSkippr fuses the signals into candidate segments and 
 - Console logging for lower-level debugging while the detector is still evolving.
 - Optional feedback API integration with v2 payloads that include an anonymous client ID, candidate features, evidence snapshots, transcript context, and model metadata.
 - Admin-only server dashboard for reviewing feedback, training models, inspecting calibrated thresholds and metrics, and safely promoting or rolling back model artifacts.
+- Structured wrong-timing review with corrected start/end boundaries, distinct-video holdout evaluation, source-specific offsets, and automatic rejection when calibration does not reduce boundary error.
 - Chrome and Chromium support first, with a Firefox build available for local testing.
 
 ## How It Works
@@ -58,7 +59,8 @@ YouTube page
   -> frame sampler captures visible video frames
   -> detectors extract transcript, progress-bar, QR, and visible-link evidence
   -> evidence fusion creates a structurally safe candidate pool
-  -> optional promoted model scores the pool and applies its calibrated display threshold
+  -> optional promoted model scores the pool, applies its calibrated display threshold,
+     and adjusts segment boundaries only when a distinct-video holdout proves lower error
   -> default-off skip controller may seek past a qualified bounded segment and offers Undo
   -> popup and page UI receive live status snapshots from extension storage
   -> reviewed feedback trains the next JSON model artifact on your server
@@ -156,7 +158,7 @@ The server package lives in `server/` and provides:
 - A React/Vite admin dashboard at `/admin`; the dashboard HTML and built `/admin/assets/*` files are protected by admin auth from `ADMIN_TOKEN`.
 - PostgreSQL persistence when `DATABASE_URL` is set, with an in-memory fallback for local development and tests.
 
-Feedback payload model metadata uses the closed `modelSource` values `bundled`, `downloaded`, or `fallback`; unknown values are rejected so admin analytics and training data stay consistent.
+Feedback payload model metadata uses the closed `modelSource` values `bundled`, `downloaded`, or `fallback`; unknown values are rejected so admin analytics and training data stay consistent. Candidate reports include both start and end boundaries. A `wrong_timing` admin review must provide a corrected start and optional end; those corrections remain separate from confidence labels and are visible in dataset exports.
 
 Local development:
 
@@ -244,4 +246,4 @@ If Chrome reports `Either the '<all_urls>' or 'activeTab' permission is required
 - Add richer but still minimal on-player visualization for candidate windows and skip history.
 - Add per-channel skip preferences after enough reviewed feedback exists to support them safely.
 - Introduce more platform adapters for additional streaming services.
-- Expand model training beyond candidate ranking into boundary-specific timing improvements.
+- Grow the distinct-video boundary-correction corpus so more detector sources can earn their own holdout-proven timing profiles.

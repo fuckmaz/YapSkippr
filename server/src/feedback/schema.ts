@@ -26,6 +26,7 @@ export const feedbackPayloadV2Schema = z.object({
   occurrenceType: z.enum(['candidate', 'evidence']),
   source: z.string().optional(),
   startSeconds: z.number().finite().nonnegative(),
+  endSeconds: z.number().finite().nonnegative().optional(),
   summary: z.string().min(1),
   reason: z.string().optional(),
   feedback: z.enum(['accurate', 'false_positive', 'wrong_timing', 'missed_context']),
@@ -39,6 +40,14 @@ export const feedbackPayloadV2Schema = z.object({
   candidateFeatures: featureRecordSchema.optional(),
   evidenceSnapshot: z.array(feedbackEvidenceSnapshotSchema).optional(),
   transcriptContext: z.string().optional()
+}).superRefine((value, context) => {
+  if (value.endSeconds !== undefined && value.endSeconds <= value.startSeconds) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['endSeconds'],
+      message: 'Candidate end time must be after its start time.'
+    });
+  }
 });
 
 export type FeedbackModelSource = z.infer<typeof feedbackModelSourceSchema>;

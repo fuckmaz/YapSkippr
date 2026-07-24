@@ -4,6 +4,7 @@ import type { CandidateModelArtifact, LabeledTrainingExample } from '../model/ty
 import { buildDetectorQuality } from './detector-quality.js';
 import type {
   DashboardSummary,
+  BoundaryCorrection,
   FeedbackRecord,
   PromotionRecord,
   ReviewLabel,
@@ -42,7 +43,7 @@ export function createMemoryRepository(now: () => string = () => new Date().toIS
       return feedback;
     },
 
-    async reviewFeedback(id: string, label: ReviewLabel, notes?: string) {
+    async reviewFeedback(id: string, label: ReviewLabel, notes?: string, boundaryCorrection?: BoundaryCorrection) {
       const record = feedback.find((item) => item.id === id);
       if (!record) return null;
       const review: ReviewRecord = {
@@ -50,6 +51,7 @@ export function createMemoryRepository(now: () => string = () => new Date().toIS
         feedbackId: id,
         label,
         ...(notes ? { notes } : {}),
+        ...(boundaryCorrection ? { boundaryCorrection } : {}),
         reviewedAt: now()
       };
       record.review = review;

@@ -38,6 +38,7 @@ export interface OccurrenceFeedbackInput {
   occurrenceType: OccurrenceFeedbackType;
   source?: EvidenceSource | string;
   startSeconds: number;
+  endSeconds?: number;
   summary: string;
   reason?: string;
   feedback: OccurrenceFeedbackValue;

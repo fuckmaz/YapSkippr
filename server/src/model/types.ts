@@ -1,3 +1,5 @@
+import type { BoundaryCalibrationArtifact } from './boundary-calibration.js';
+
 export interface CandidateModelArtifact {
   modelId: string;
   modelVersion: string;
@@ -9,6 +11,7 @@ export interface CandidateModelArtifact {
   thresholds: Record<string, number>;
   metrics: Record<string, number>;
   trainingSetSummary: Record<string, number>;
+  boundaryCalibration?: BoundaryCalibrationArtifact;
 }
 
 export interface LabeledTrainingExample {

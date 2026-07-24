@@ -31,6 +31,24 @@ const SUPPRESSING_MODEL = {
   },
   trainingSetSummary: { examples: 200, positives: 100, negatives: 100 }
 };
+const BOUNDARY_MODEL = {
+  ...SUPPRESSING_MODEL,
+  modelId: 'model-runtime-boundary',
+  intercept: 2,
+  boundaryCalibration: {
+    version: 1,
+    global: {
+      startOffsetSeconds: 0,
+      endOffsetSeconds: -3,
+      trainingExamples: 24,
+      validationExamples: 6,
+      videoGroups: 12,
+      baselineMaeSeconds: 3.2,
+      calibratedMaeSeconds: 0.2
+    },
+    bySource: {}
+  }
+};
 
 test('runs safe auto-skip, Undo, and video replacement through the packaged extension', async () => {
   const extensionPath = resolve('.output/chrome-mv3');
@@ -129,6 +147,43 @@ test('lets a downloaded model threshold suppress a heuristic candidate before au
   }
 });
 
+test('applies a holdout-proven model boundary correction before auto-skip', async () => {
+  const extensionPath = resolve('.output/chrome-mv3');
+  const context = await chromium.launchPersistentContext('', {
+    channel: 'chromium',
+    headless: true,
+    args: [
+      `--disable-extensions-except=${extensionPath}`,
+      `--load-extension=${extensionPath}`,
+      '--autoplay-policy=no-user-gesture-required'
+    ]
+  });
+
+  try {
+    const serviceWorker = await getExtensionServiceWorker(context);
+    await serviceWorker.evaluate(async (settings) => {
+      await chrome.storage.local.clear();
+      await chrome.storage.local.set(settings);
+    }, {
+      [AUTO_SKIP_ENABLED_STORAGE_KEY]: true,
+      [FEEDBACK_ENDPOINT_STORAGE_KEY]: FEEDBACK_ENDPOINT
+    });
+
+    await installYouTubeFixtureRoutes(context, BOUNDARY_MODEL);
+    const page = await context.newPage();
+    await page.goto(WATCH_URL, { waitUntil: 'domcontentloaded' });
+    const statusHost = page.locator('#yapskippr-status-host');
+    await expect(statusHost.locator('[data-role="candidates"]')).toHaveText('1 candidate', { timeout: 15_000 });
+    await expect(statusHost.locator('[data-role="skip-notice"]')).toBeVisible({ timeout: 5_000 });
+    await page.locator('video.html5-main-video').evaluate((video: HTMLVideoElement) => video.pause());
+
+    expect(await videoCurrentTime(page)).toBeGreaterThanOrEqual(5);
+    expect(await videoCurrentTime(page)).toBeLessThan(7.5);
+  } finally {
+    await context.close();
+  }
+});
+
 async function getExtensionServiceWorker(context: BrowserContext): Promise<Worker> {
   return context.serviceWorkers()[0] ?? context.waitForEvent('serviceworker', { timeout: 10_000 });
 }
@@ -139,7 +194,10 @@ async function setAutoSkipPreference(serviceWorker: Worker, enabled: boolean): P
   }, { storageKey: AUTO_SKIP_ENABLED_STORAGE_KEY, enabled });
 }
 
-async function installYouTubeFixtureRoutes(context: BrowserContext): Promise<void> {
+async function installYouTubeFixtureRoutes(
+  context: BrowserContext,
+  activeModel: typeof SUPPRESSING_MODEL | typeof BOUNDARY_MODEL = SUPPRESSING_MODEL
+): Promise<void> {
   const videoBody = Buffer.from(VIDEO_BASE64, 'base64');
   await context.route('https://www.youtube.com/**', async (route) => {
     const url = new URL(route.request().url());
@@ -169,7 +227,7 @@ async function installYouTubeFixtureRoutes(context: BrowserContext): Promise<voi
     if (url.pathname === '/api/v1/model/latest') {
       await route.fulfill({
         contentType: 'application/json',
-        body: JSON.stringify(SUPPRESSING_MODEL)
+        body: JSON.stringify(activeModel)
       });
       return;
     }

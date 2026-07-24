@@ -1,4 +1,5 @@
 import type { CandidateModelArtifact, LabeledTrainingExample } from './types.js';
+import type { BoundaryCalibrationArtifact } from './boundary-calibration.js';
 
 export interface TrainLogisticModelOptions {
   now?: string;
@@ -6,6 +7,7 @@ export interface TrainLogisticModelOptions {
   learningRate?: number;
   positivePrecisionTarget?: number;
   reviewRecallTarget?: number;
+  boundaryCalibration?: BoundaryCalibrationArtifact;
 }
 
 export interface ScoredTrainingExample {
@@ -121,7 +123,8 @@ export function trainLogisticModel(
       negatives,
       featureCount: trainableFeatures.length,
       thresholdsCalibrated: thresholdCalibration.calibrated ? 1 : 0
-    }
+    },
+    ...(options.boundaryCalibration ? { boundaryCalibration: options.boundaryCalibration } : {})
   };
 }
 

@@ -16,7 +16,13 @@ export interface ReviewRecord {
   feedbackId: string;
   label: ReviewLabel;
   notes?: string;
+  boundaryCorrection?: BoundaryCorrection;
   reviewedAt: string;
+}
+
+export interface BoundaryCorrection {
+  startSeconds: number;
+  endSeconds?: number;
 }
 
 export interface TrainingRunRecord {
@@ -70,7 +76,12 @@ export interface DetectorQualityRow {
 export interface YapSkipprRepository {
   createFeedback(payload: FeedbackPayloadV2): Promise<FeedbackRecord>;
   listFeedback(): Promise<FeedbackRecord[]>;
-  reviewFeedback(id: string, label: ReviewLabel, notes?: string): Promise<FeedbackRecord | null>;
+  reviewFeedback(
+    id: string,
+    label: ReviewLabel,
+    notes?: string,
+    boundaryCorrection?: BoundaryCorrection
+  ): Promise<FeedbackRecord | null>;
   listTrainingExamples(): Promise<LabeledTrainingExample[]>;
   createTrainingRun(model: CandidateModelArtifact): Promise<TrainingRunRecord>;
   listTrainingRuns(): Promise<TrainingRunRecord[]>;

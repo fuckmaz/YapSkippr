@@ -112,6 +112,7 @@ const scanCandidateListRenderer = scanCandidates
         candidate.summary,
         candidate.detail,
         candidate.seekSeconds,
+        candidate.endSeconds ?? null,
         candidate.actionLabel
       ],
       createNode: createCandidateListItem
@@ -331,6 +332,7 @@ function createCandidateListItem(candidate: PopupCandidateView): HTMLLIElement {
     occurrenceId: candidate.id,
     occurrenceType: 'candidate',
     startSeconds: candidate.seekSeconds,
+    endSeconds: candidate.endSeconds,
     summary: candidate.summary,
     reason: candidate.detail
   }));
@@ -857,6 +859,7 @@ async function sendFeedbackForButton(button: HTMLButtonElement): Promise<void> {
   }
 
   const occurrenceId = button.dataset.occurrenceId ?? 'unknown';
+  const endSeconds = Number(button.dataset.endSeconds);
   const payloadSnapshot = JSON.stringify(createOccurrenceFeedbackPayload({
     videoUrl: currentScanStatus.pageUrl,
     videoId: currentScanStatus.videoId,
@@ -864,6 +867,7 @@ async function sendFeedbackForButton(button: HTMLButtonElement): Promise<void> {
     occurrenceType,
     source: button.dataset.source,
     startSeconds,
+    ...(Number.isFinite(endSeconds) ? { endSeconds } : {}),
     summary: button.dataset.summary ?? 'YapSkippr occurrence',
     reason: button.dataset.reason,
     feedback,
@@ -1165,6 +1169,7 @@ function createFeedbackButtons(input: {
   occurrenceType: OccurrenceFeedbackType;
   source?: string;
   startSeconds: number;
+  endSeconds?: number;
   summary: string;
   reason?: string;
 }): HTMLButtonElement[] {
@@ -1178,6 +1183,7 @@ function createFeedbackButton(
     occurrenceType: OccurrenceFeedbackType;
     source?: string;
     startSeconds: number;
+    endSeconds?: number;
     summary: string;
     reason?: string;
   }
@@ -1192,6 +1198,7 @@ function createFeedbackButton(
   button.dataset.occurrenceId = input.occurrenceId;
   button.dataset.occurrenceType = input.occurrenceType;
   button.dataset.startSeconds = String(input.startSeconds);
+  if (input.endSeconds !== undefined) button.dataset.endSeconds = String(input.endSeconds);
   button.dataset.summary = input.summary;
   if (input.source) button.dataset.source = input.source;
   if (input.reason) button.dataset.reason = input.reason;

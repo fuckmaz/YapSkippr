@@ -7,6 +7,7 @@ export const MIN_PROMOTION_POSITIVE_PRECISION = 0.9;
 export const MIN_PROMOTION_POSITIVE_RECALL = 0.5;
 export const MIN_PROMOTION_REVIEW_RECALL = 0.9;
 export const MIN_PROMOTION_AUC = 0.7;
+export const MAX_BOUNDARY_MAE_REGRESSION_SECONDS = 0.5;
 
 export interface ModelPromotionSafety {
   safe: boolean;
@@ -66,9 +67,57 @@ export function evaluateModelPromotionSafety(
     requireNoRegression(blockers, 'Display recall', metrics.positiveRecall, promoted.metrics.positiveRecall, 0.05);
     requireNoRegression(blockers, 'Review recall', metrics.reviewRecall, promoted.metrics.reviewRecall, 0.05);
     requireNoRegression(blockers, 'AUC', metrics.auc, promoted.metrics.auc, 0.03);
+    requireBoundaryNoRegression(blockers, candidate, promoted);
   }
 
   return { safe: blockers.length === 0, blockers };
+}
+
+function requireBoundaryNoRegression(
+  blockers: string[],
+  candidate: CandidateModelArtifact,
+  promoted: CandidateModelArtifact
+): void {
+  const promotedCalibration = promoted.boundaryCalibration;
+  if (!promotedCalibration) return;
+  const candidateCalibration = candidate.boundaryCalibration;
+  if (!candidateCalibration) {
+    blockers.push('Candidate removes the promoted model boundary calibration.');
+    return;
+  }
+  compareBoundaryProfile(
+    blockers,
+    'Global boundary MAE',
+    candidateCalibration.global?.calibratedMaeSeconds,
+    promotedCalibration.global?.calibratedMaeSeconds
+  );
+  for (const [source, promotedProfile] of Object.entries(promotedCalibration.bySource)) {
+    compareBoundaryProfile(
+      blockers,
+      `${source} boundary MAE`,
+      candidateCalibration.bySource[source]?.calibratedMaeSeconds,
+      promotedProfile.calibratedMaeSeconds
+    );
+  }
+}
+
+function compareBoundaryProfile(
+  blockers: string[],
+  label: string,
+  candidate: number | undefined,
+  baseline: number | undefined
+): void {
+  if (!Number.isFinite(baseline)) return;
+  if (!Number.isFinite(candidate)) {
+    blockers.push(`${label} is missing while the promoted model has a validated profile.`);
+    return;
+  }
+  if ((candidate as number) > (baseline as number) + MAX_BOUNDARY_MAE_REGRESSION_SECONDS) {
+    blockers.push(
+      `${label} regresses more than ${MAX_BOUNDARY_MAE_REGRESSION_SECONDS.toFixed(3)} seconds `
+      + `(${formatMetric(candidate)} vs ${formatMetric(baseline)}).`
+    );
+  }
 }
 
 function requireMinimum(blockers: string[], value: number | undefined, minimum: number, label: string): void {

@@ -30,6 +30,7 @@ export interface PopupCandidateView {
   summary: string;
   detail: string;
   seekSeconds: number;
+  endSeconds?: number;
   actionLabel: string;
 }
 
@@ -95,6 +96,7 @@ export function createPopupScanStatusView(
       summary: candidate.summary,
       detail: formatCandidateDetail(candidate),
       seekSeconds: candidate.startSeconds,
+      ...(candidate.endSeconds === undefined ? {} : { endSeconds: candidate.endSeconds }),
       actionLabel: `Jump to ${formatTimestamp(candidate.startSeconds)}`
     })),
     events: status.recentEvents.map((event) => ({

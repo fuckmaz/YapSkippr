@@ -92,6 +92,7 @@ test('formats a running scan snapshot for the popup', () => {
         summary: '1:12-2:12 · 86% · transcript + QR',
         detail: '86% model · 72% heuristic · transcript + QR',
         seekSeconds: 72,
+        endSeconds: 132,
         actionLabel: 'Jump to 1:12'
       }
     ],

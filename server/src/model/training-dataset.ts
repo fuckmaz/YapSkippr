@@ -16,6 +16,13 @@ export interface TrainingDatasetRow {
   compatible: boolean;
   trainable: boolean;
   exclusionReason: string | null;
+  boundaryCorrection: {
+    startSeconds: number;
+    endSeconds?: number;
+  } | null;
+  startOffsetSeconds: number | null;
+  endOffsetSeconds: number | null;
+  boundaryTrainable: boolean;
 }
 
 export function buildTrainingDatasetRows(
@@ -36,6 +43,9 @@ export function buildTrainingDatasetRows(
       compatible,
       activeFeatureSchemaVersion
     });
+    const boundaryCorrection = record.review?.label === 'wrong_timing'
+      ? record.review.boundaryCorrection ?? null
+      : null;
 
     return {
       feedbackId: record.id,
@@ -51,9 +61,21 @@ export function buildTrainingDatasetRows(
       featureCount,
       compatible,
       trainable: exclusionReason === null,
-      exclusionReason
+      exclusionReason,
+      boundaryCorrection,
+      startOffsetSeconds: boundaryCorrection
+        ? round(boundaryCorrection.startSeconds - record.payload.startSeconds)
+        : null,
+      endOffsetSeconds: boundaryCorrection?.endSeconds !== undefined && record.payload.endSeconds !== undefined
+        ? round(boundaryCorrection.endSeconds - record.payload.endSeconds)
+        : null,
+      boundaryTrainable: boundaryCorrection !== null
     };
   });
+}
+
+function round(value: number): number {
+  return Number(value.toFixed(3));
 }
 
 function getExclusionReason({

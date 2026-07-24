@@ -66,6 +66,7 @@ interface FeedbackRecord {
     occurrenceType: string;
     source?: string;
     startSeconds: number;
+    endSeconds?: number;
     summary: string;
     reason?: string;
     feedback: string;
@@ -91,6 +92,10 @@ interface FeedbackRecord {
     id: string;
     label: ReviewLabel;
     notes?: string;
+    boundaryCorrection?: {
+      startSeconds: number;
+      endSeconds?: number;
+    };
     reviewedAt: string;
   };
 }
@@ -106,6 +111,21 @@ interface ModelArtifact {
   thresholds: Record<string, number>;
   metrics: Record<string, number>;
   trainingSetSummary: Record<string, number>;
+  boundaryCalibration?: {
+    version: 1;
+    global?: BoundaryCalibrationProfile;
+    bySource: Record<string, BoundaryCalibrationProfile>;
+  };
+}
+
+interface BoundaryCalibrationProfile {
+  startOffsetSeconds: number;
+  endOffsetSeconds?: number;
+  trainingExamples: number;
+  validationExamples: number;
+  videoGroups: number;
+  baselineMaeSeconds: number;
+  calibratedMaeSeconds: number;
 }
 
 interface TrainingRun {
@@ -133,6 +153,10 @@ interface TrainingDatasetRow {
   compatible: boolean;
   trainable: boolean;
   exclusionReason: string | null;
+  boundaryCorrection: { startSeconds: number; endSeconds?: number } | null;
+  startOffsetSeconds: number | null;
+  endOffsetSeconds: number | null;
+  boundaryTrainable: boolean;
 }
 
 interface PromotionRecord {
@@ -165,6 +189,7 @@ interface ModelEvaluation {
       f1: number | null;
     };
   };
+  boundaryCalibration: ModelArtifact['boundaryCalibration'] | null;
   trainingSetSummary: Record<string, number>;
   promotedComparison: null | {
     promotedModelId: string;
@@ -564,6 +589,8 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
   const [selectedSource, setSelectedSource] = useState('all');
   const [busyLabel, setBusyLabel] = useState<ReviewLabel | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
+  const [correctedStart, setCorrectedStart] = useState('');
+  const [correctedEnd, setCorrectedEnd] = useState('');
   const [reviewError, setReviewError] = useState<string | null>(null);
   const submittingReviewRef = useRef(false);
   const sources = useMemo(() => uniqueSources(data.feedback), [data.feedback]);
@@ -581,11 +608,29 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
     setReviewError(null);
     try {
       const notes = reviewNotes.trim();
+      const correctedStartSeconds = Number(correctedStart);
+      const correctedEndSeconds = correctedEnd.trim() ? Number(correctedEnd) : undefined;
+      if (label === 'wrong_timing' && (
+        !Number.isFinite(correctedStartSeconds)
+        || correctedStartSeconds < 0
+        || (correctedEndSeconds !== undefined && (
+          !Number.isFinite(correctedEndSeconds)
+          || correctedEndSeconds <= correctedStartSeconds
+        ))
+      )) {
+        throw new Error('Enter a valid corrected start and an optional end after the start.');
+      }
       await api(`/admin/feedback/${current.id}/review`, token, {
         method: 'POST',
         body: JSON.stringify({
           label,
-          ...(notes ? { notes } : {})
+          ...(notes ? { notes } : {}),
+          ...(label === 'wrong_timing' ? {
+            boundaryCorrection: {
+              startSeconds: correctedStartSeconds,
+              ...(correctedEndSeconds === undefined ? {} : { endSeconds: correctedEndSeconds })
+            }
+          } : {})
         })
       });
       await onRefresh();
@@ -600,6 +645,8 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
 
   useEffect(() => {
     setReviewNotes('');
+    setCorrectedStart(current ? String(current.payload.startSeconds) : '');
+    setCorrectedEnd(current?.payload.endSeconds === undefined ? '' : String(current.payload.endSeconds));
   }, [current?.id]);
 
   useEffect(() => {
@@ -618,7 +665,7 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [busyLabel, current?.id, reviewNotes]);
+  }, [busyLabel, correctedEnd, correctedStart, current?.id, reviewNotes]);
 
   return (
     <section className="page-grid">
@@ -682,6 +729,35 @@ function ReviewQueue({ token, data, onRefresh }: { token: string; data: Dashboar
                   </div>
                   <p>{current.payload.notes || 'No viewer note submitted.'}</p>
                 </div>
+              </section>
+              <section className="boundary-correction">
+                <div>
+                  <h3>Boundary correction</h3>
+                  <p>Used when marking Wrong timing.</p>
+                </div>
+                <label>
+                  <span>Start · seconds</span>
+                  <input
+                    aria-label="Corrected start seconds"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={correctedStart}
+                    onChange={(event) => setCorrectedStart(event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>End · seconds</span>
+                  <input
+                    aria-label="Corrected end seconds"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    placeholder="Optional"
+                    value={correctedEnd}
+                    onChange={(event) => setCorrectedEnd(event.target.value)}
+                  />
+                </label>
               </section>
               <label className="review-notes">
                 <span>Admin notes</span>
@@ -1167,6 +1243,22 @@ function ModelEvaluationPanel({ model, evaluation }: { model: ModelArtifact; eva
           )}
         </section>
         <section>
+          <h3>Boundary correction</h3>
+          {evaluation.boundaryCalibration?.global ? (
+            <div className="summary-list">
+              <DetailRow label="Start correction" value={formatSecondsDelta(evaluation.boundaryCalibration.global.startOffsetSeconds)} />
+              <DetailRow label="End correction" value={formatSecondsDelta(evaluation.boundaryCalibration.global.endOffsetSeconds)} />
+              <DetailRow label="Holdout examples" value={evaluation.boundaryCalibration.global.validationExamples} />
+              <DetailRow label="Video groups" value={evaluation.boundaryCalibration.global.videoGroups} />
+              <DetailRow label="Baseline MAE" value={`${evaluation.boundaryCalibration.global.baselineMaeSeconds.toFixed(2)}s`} />
+              <DetailRow label="Calibrated MAE" value={`${evaluation.boundaryCalibration.global.calibratedMaeSeconds.toFixed(2)}s`} />
+              <DetailRow label="Source profiles" value={Object.keys(evaluation.boundaryCalibration.bySource).length} />
+            </div>
+          ) : (
+            <p className="muted-note">No boundary correction passed holdout validation.</p>
+          )}
+        </section>
+        <section>
           <h3>Training summary</h3>
           <div className="summary-list">
             {summary.map(([key, value]) => (
@@ -1221,8 +1313,8 @@ function TrainingPage({
       .filter((row) => datasetSourceFilter === 'all' || row.source === datasetSourceFilter)
       .filter((row) => {
         if (datasetStatusFilter === 'all') return true;
-        if (datasetStatusFilter === 'trainable') return row.trainable;
-        if (datasetStatusFilter === 'blocked') return !row.trainable;
+        if (datasetStatusFilter === 'trainable') return row.trainable || row.boundaryTrainable;
+        if (datasetStatusFilter === 'blocked') return !row.trainable && !row.boundaryTrainable;
         if (datasetStatusFilter === 'incompatible') return !row.compatible;
         return true;
       })
@@ -1323,8 +1415,14 @@ function TrainingPage({
             row.reviewLabel ? <LabelBadge label={row.reviewLabel} /> : <span className="status pending">Pending</span>,
             row.featureSchemaVersion === null ? '-' : `Schema ${row.featureSchemaVersion}`,
             row.featureCount,
-            row.trainable ? <span className="status positive">Trainable</span> : <span className="status pending">Blocked</span>,
-            row.exclusionReason ?? 'Ready for confidence training',
+            row.trainable
+              ? <span className="status positive">Confidence</span>
+              : row.boundaryTrainable
+                ? <span className="status positive">Boundary</span>
+                : <span className="status pending">Blocked</span>,
+            row.boundaryTrainable
+              ? 'Structured correction ready for boundary calibration'
+              : row.exclusionReason ?? 'Ready for confidence training',
             <div className="table-actions">
               <button type="button" aria-label={`Inspect dataset row ${row.occurrenceId}`} onClick={() => setSelectedDatasetFeedbackId(row.feedbackId)}>
                 <Eye size={14} /> Inspect
@@ -1445,6 +1543,23 @@ function TrainingRunDetailPanel({
             </div>
           </section>
           <section>
+            <h3>Boundary calibration</h3>
+            {model?.boundaryCalibration?.global ? (
+              <div className="summary-list">
+                <DetailRow label="Start correction" value={formatSecondsDelta(model.boundaryCalibration.global.startOffsetSeconds)} />
+                <DetailRow label="End correction" value={formatSecondsDelta(model.boundaryCalibration.global.endOffsetSeconds ?? null)} />
+                <DetailRow label="Training examples" value={model.boundaryCalibration.global.trainingExamples} />
+                <DetailRow label="Holdout examples" value={model.boundaryCalibration.global.validationExamples} />
+                <DetailRow label="Video groups" value={model.boundaryCalibration.global.videoGroups} />
+                <DetailRow label="Baseline MAE" value={`${model.boundaryCalibration.global.baselineMaeSeconds.toFixed(2)}s`} />
+                <DetailRow label="Calibrated MAE" value={`${model.boundaryCalibration.global.calibratedMaeSeconds.toFixed(2)}s`} />
+                <DetailRow label="Source profiles" value={Object.keys(model.boundaryCalibration.bySource).length} />
+              </div>
+            ) : (
+              <p className="muted-note">No holdout-proven boundary correction was available for this run.</p>
+            )}
+          </section>
+          <section>
             <h3>Comparison to promoted model</h3>
             {promoted ? (
               <div className="summary-list">
@@ -1491,6 +1606,11 @@ function TrainingDatasetDetailPanel({ row, feedback }: { row: TrainingDatasetRow
             <DetailRow label="Feature count" value={row.featureCount} />
             <DetailRow label="Trainable" value={row.trainable ? 'Yes' : 'No'} />
             <DetailRow label="Reason" value={row.exclusionReason ?? 'Ready for confidence training'} />
+            <DetailRow label="Boundary trainable" value={row.boundaryTrainable ? 'Yes' : 'No'} />
+            <DetailRow label="Corrected start" value={row.boundaryCorrection ? formatTime(row.boundaryCorrection.startSeconds) : '-'} />
+            <DetailRow label="Corrected end" value={row.boundaryCorrection?.endSeconds === undefined ? '-' : formatTime(row.boundaryCorrection.endSeconds)} />
+            <DetailRow label="Start offset" value={formatSecondsDelta(row.startOffsetSeconds)} />
+            <DetailRow label="End offset" value={formatSecondsDelta(row.endOffsetSeconds)} />
           </div>
         </section>
         <section className="detail-section">
@@ -2029,6 +2149,11 @@ function formatSignedMetric(value: number | undefined): string {
 function formatMetricDelta(value: number | undefined, baseline: number | undefined): string {
   if (value === undefined || baseline === undefined) return '-';
   return formatSignedMetric(value - baseline);
+}
+
+function formatSecondsDelta(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '-';
+  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}s`;
 }
 
 function numberValue(value: number | undefined): number {

@@ -1,4 +1,5 @@
 import {
+  applyBoundaryCalibration,
   applyModelToCandidate,
   selectCandidateSegments,
   scoreCandidateFeatures,
@@ -42,6 +43,79 @@ test('validates compatible candidate model artifacts', () => {
   expect(validateCandidateModel({ ...model, thresholds: { positive: 0.65 } })).toBeNull();
   expect(validateCandidateModel({ ...model, thresholds: { positive: 0.65, review: 0.7 } })).toBeNull();
   expect(validateCandidateModel({ ...model, thresholds: { positive: 1.1, review: 0.45 } })).toBeNull();
+  expect(validateCandidateModel({
+    ...model,
+    boundaryCalibration: {
+      version: 1,
+      bySource: {},
+      global: {
+        startOffsetSeconds: 31,
+        trainingExamples: 20,
+        validationExamples: 5,
+        videoGroups: 10,
+        baselineMaeSeconds: 5,
+        calibratedMaeSeconds: 2
+      }
+    }
+  })).toBeNull();
+});
+
+test('applies source-specific holdout-proven boundary offsets before skipping', () => {
+  const candidate: SegmentCandidate = {
+    startSeconds: 42,
+    endSeconds: 90,
+    confidence: 0.8,
+    evidence: [{
+      source: 'transcript',
+      kind: 'ad-read-start',
+      startSeconds: 42,
+      confidence: 0.8,
+      reason: 'Sponsor phrase.'
+    }]
+  };
+  const profile = {
+    startOffsetSeconds: 5,
+    endOffsetSeconds: 8,
+    trainingExamples: 20,
+    validationExamples: 5,
+    videoGroups: 10,
+    baselineMaeSeconds: 8,
+    calibratedMaeSeconds: 1
+  };
+
+  expect(applyBoundaryCalibration(candidate, {
+    version: 1,
+    global: { ...profile, startOffsetSeconds: 2, endOffsetSeconds: 2 },
+    bySource: { transcript: profile }
+  })).toMatchObject({
+    startSeconds: 47,
+    endSeconds: 98
+  });
+});
+
+test('refuses a boundary offset that would invert the segment', () => {
+  const candidate: SegmentCandidate = {
+    startSeconds: 42,
+    endSeconds: 45,
+    confidence: 0.8,
+    evidence: []
+  };
+  const adjusted = applyBoundaryCalibration(candidate, {
+    version: 1,
+    global: {
+      startOffsetSeconds: 10,
+      endOffsetSeconds: -10,
+      trainingExamples: 20,
+      validationExamples: 5,
+      videoGroups: 10,
+      baselineMaeSeconds: 8,
+      calibratedMaeSeconds: 1
+    },
+    bySource: {}
+  });
+
+  expect(adjusted.startSeconds).toBe(42);
+  expect(adjusted.endSeconds).toBe(45);
 });
 
 test('scores candidate features using logistic weights and intercept', () => {
